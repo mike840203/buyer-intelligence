@@ -154,12 +154,37 @@ pytest        # 純規則邏輯,不呼叫 API、不需金鑰
 > 本 repo 為 v0.1 骨架:五層全部可執行,但 Apollo / IHA 名錄的欄位映射需依
 > 實際帳號與檔案格式微調(見各 adapter 註解)。
 
-## 已知限制與待辦
+## 待辦清單
 
-- **寄信基礎設施**:冷開發信的網域信譽(SPF/DKIM/DMARC、網域暖機)與
-  CAN-SPAM 合規(實體地址、退訂連結)不在本系統範圍,寄送前必須先處理 ——
-  這是 L4 成敗的最大實務風險。
-- **開信/回覆追蹤**:目前以人工寄送為主,未整合 email 追蹤;若量大可評估
-  接 Instantly / Smartlead 等寄送服務的 API。
-- **評分回饋迴路**:權重目前是先驗設定,展後應以實際會議轉化率校準。
-- Apollo 免費 tier 對 email export 有限制,量產期(M2)需升級付費方案。
+### 短期:驗證期(現在 → 2026-08,對應 M1)
+
+- [ ] `buyer-intel review` 覆核 Prima Coffee 的信件草稿(已在佇列)→ 輸出 `outbox/`
+- [ ] `buyer-intel pipeline` 跑完剩餘 3 筆種子名單(Seattle Coffee Gear、
+      Clive Coffee 在 P1 地區 PNW,預期 A 級,可對照驗證評分模型)
+- [ ] 申請 Apollo 免費帳號 → 填 `APOLLO_API_KEY` → 建立第一批德州+西岸咖啡通路名單
+- [ ] 申請 Hunter 免費帳號 → 填 `HUNTER_API_KEY`(email 驗證,退信率是網域信譽命脈)
+- [ ] 申請 Google Maps 金鑰 → 填 `GOOGLE_MAPS_API_KEY`(掃 P1/P2 城市獨立店家)
+- [ ] 建 Calendly 活動(「TIHS 攤位會議 30 分鐘」)→ 填 `CALENDLY_URL`
+
+### 中期:名單開發期(2026-09 → 12,對應 M2–M3)
+
+- [ ] **寄信基礎設施(L4 成敗的最大實務風險)**:購買專用寄信網域(勿用主網域)、
+      設定 SPF/DKIM/DMARC、網域暖機 4–6 週後才開始正式 outreach
+- [ ] **CAN-SPAM 合規**:信尾加公司實體地址與退訂機制
+- [ ] 開信/回覆追蹤:量大時評估 Instantly / Smartlead 等寄送服務 API
+- [ ] Apollo 升級付費方案(免費 tier 對 email export 有限制)
+- [ ] IHA 名錄取得後接入 `iha` adapter,建立 T0 Rep Group 名單
+- [ ] **名單量反推**:冷信會議轉化率約 2–5%,展前要敲定 15–20 場會議
+      → A 級名單需 400–800 筆,以此訂每月名單開發目標
+
+### 展前/展後(2027-01 →,對應 M4–M5)
+
+- [ ] 展中模組實機演練:拿台灣名片測 `buyer-intel serve` 的 OCR 與 brief
+- [ ] 評分權重校準:用實際回覆率/會議轉化率回頭調 `config.SCORE_WEIGHTS`
+- [ ] 展後把 PO 轉化數據回填,驗證戰略報告 KPI(首批訂單 3–5 家)
+
+### 戰略層(系統外,建議補進戰略報告)
+
+- [ ] 單位經濟:批發價、毛利結構、MOQ、ROI 門檻
+- [ ] MAP(最低廣告價格)政策:預防 T1 電商 × T2 零售 × 自有 DTC 的通路衝突
+- [ ] gia 獎項報名死線確認(通常在展前數月截止)
