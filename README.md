@@ -161,7 +161,8 @@ pytest        # 純規則邏輯,不呼叫 API、不需金鑰
 - [ ] `buyer-intel review` 覆核 Prima Coffee 的信件草稿(已在佇列)→ 輸出 `outbox/`
 - [ ] `buyer-intel pipeline` 跑完剩餘 3 筆種子名單(Seattle Coffee Gear、
       Clive Coffee 在 P1 地區 PNW,預期 A 級,可對照驗證評分模型)
-- [ ] 申請 Apollo 免費帳號 → 填 `APOLLO_API_KEY` → 建立第一批德州+西岸咖啡通路名單
+- [x] 申請 Apollo 帳號 → 已填 `APOLLO_API_KEY`(注意:**People Search API 需付費方案**,
+      免費方案改走網頁搜尋 → 匯出 CSV → `ingest --source manual`)
 - [ ] 申請 Hunter 免費帳號 → 填 `HUNTER_API_KEY`(email 驗證,退信率是網域信譽命脈)
 - [ ] 申請 Google Maps 金鑰 → 填 `GOOGLE_MAPS_API_KEY`(掃 P1/P2 城市獨立店家)
 - [ ] 建 Calendly 活動(「TIHS 攤位會議 30 分鐘」)→ 填 `CALENDLY_URL`

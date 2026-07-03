@@ -49,6 +49,14 @@ class ApolloAdapter(BaseAdapter):
             headers={"X-Api-Key": APOLLO_API_KEY, "Content-Type": "application/json"},
             timeout=30,
         )
+        if resp.status_code == 403:
+            # 免費方案不開放 People Search API(實測 error_code: API_INACCESSIBLE)
+            raise RuntimeError(
+                "Apollo 免費方案不開放 People Search API,兩個選擇:\n"
+                "  1. 升級付費方案(Basic 起)開通 API\n"
+                "  2. 免費替代:在 Apollo 網頁介面搜尋 → 匯出 CSV →\n"
+                "     buyer-intel ingest --source manual --file <匯出檔>.csv"
+            )
         resp.raise_for_status()
         data = resp.json()
 
