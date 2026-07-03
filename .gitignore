@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+
+# 環境變數與金鑰
+.env
+
+# 本地資料(名單資料庫、LangGraph 存檔點、輸出)
+data/*.db
+data/*.db-*
+outbox/
+dashboard.html
+
+# 編輯器
+.DS_Store
+.idea/
+.vscode/
