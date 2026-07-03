@@ -23,7 +23,7 @@ from .config import (
     SIZE_SWEET_MIN,
     SIZE_SWEET_MAX,
 )
-from .llm import client
+from .llm import complete_structured
 from .models import FitJudgment, Grade, Lead
 
 # 職稱關鍵字 → 決策權基礎分(規則部分,與 LLM 判斷各佔一半)
@@ -63,27 +63,22 @@ def rule_authority_score(title: str | None) -> float:
 
 def llm_fit_judgment(lead: Lead) -> FitJudgment:
     """Sonnet 質性判斷:通路契合度 + 決策權(佐以背景摘要)。"""
-    response = client().messages.parse(
-        model=MODEL_MID,
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": (
-                "你在替台灣真空保鮮罐品牌 Ankomn 評估美國 B2B 買家線索。"
-                "Ankomn 的核心價值主張是咖啡豆與食品的真空保鮮,"
-                "主攻通路優先序:精品咖啡器材通路 > 廚房專賣零售 > 一般零售。"
-                "已販售競品保鮮罐(如 Fellow Atmos)代表品類有貨架,應加分。\n\n"
-                f"公司:{lead.company}\n"
-                f"聯絡人職稱:{lead.title or '未知'}\n"
-                f"通路分層:{lead.tier}\n"
-                f"背景摘要:{lead.enrichment_notes or '無'}\n\n"
-                "請給出 channel_fit_score(通路契合度 0-100)、"
-                "authority_score(此聯絡人的採購決策權 0-100)與簡短 rationale(繁體中文)。"
-            ),
-        }],
-        output_format=FitJudgment,
+    judgment = complete_structured(
+        MODEL_MID,
+        (
+            "你在替台灣真空保鮮罐品牌 Ankomn 評估美國 B2B 買家線索。"
+            "Ankomn 的核心價值主張是咖啡豆與食品的真空保鮮,"
+            "主攻通路優先序:精品咖啡器材通路 > 廚房專賣零售 > 一般零售。"
+            "已販售競品保鮮罐(如 Fellow Atmos)代表品類有貨架,應加分。\n\n"
+            f"公司:{lead.company}\n"
+            f"聯絡人職稱:{lead.title or '未知'}\n"
+            f"通路分層:{lead.tier}\n"
+            f"背景摘要:{lead.enrichment_notes or '無'}\n\n"
+            "請給出 channel_fit_score(通路契合度 0-100)、"
+            "authority_score(此聯絡人的採購決策權 0-100)與簡短 rationale(繁體中文)。"
+        ),
+        FitJudgment,
     )
-    judgment = response.parsed_output
     if judgment is None:
         judgment = FitJudgment(
             channel_fit_score=50, authority_score=50,

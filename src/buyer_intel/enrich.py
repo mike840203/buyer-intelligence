@@ -15,7 +15,7 @@ import httpx
 from rapidfuzz import fuzz
 
 from .config import HUNTER_API_KEY, KNOWN_COMPETITORS, MODEL_FAST, MODEL_MID
-from .llm import client, create_with_server_tools, text_of
+from .llm import complete, complete_structured
 from .models import EnrichmentFacts, Lead, RawLead, Region
 
 # 州別 → 戰略地區映射(對應戰略報告「目標地區優先序」)
@@ -131,30 +131,16 @@ def research_company(lead: Lead) -> str:
         f"3) whether they already sell competing storage products such as {competitors}, "
         "4) rough revenue scale if public. Keep it under 200 words."
     )
-    response = create_with_server_tools(
-        model=MODEL_MID,
-        max_tokens=2048,
-        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return text_of(response)
+    return complete(MODEL_MID, prompt, max_tokens=2048, web_search=True)
 
 
 def extract_facts(summary: str) -> EnrichmentFacts:
     """Haiku:從搜尋摘要抽取結構化事實(高頻低難度 → 用便宜模型)。"""
-    response = client().messages.parse(
-        model=MODEL_FAST,
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": (
-                "從以下公司背景摘要抽取結構化欄位。無法確定的欄位留空(null)。"
-                f"\n\n{summary}"
-            ),
-        }],
-        output_format=EnrichmentFacts,
+    facts = complete_structured(
+        MODEL_FAST,
+        f"從以下公司背景摘要抽取結構化欄位。無法確定的欄位留空(null)。\n\n{summary}",
+        EnrichmentFacts,
     )
-    facts = response.parsed_output
     if facts is None:
         # 解析失敗時保底:留原始摘要,不中斷 pipeline
         facts = EnrichmentFacts(summary=summary)

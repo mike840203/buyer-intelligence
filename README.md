@@ -41,11 +41,19 @@ cd buyer-intelligence
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-cp .env.example .env   # 填入 ANTHROPIC_API_KEY(必填)與其他金鑰
+cp .env.example .env   # 依需求填入金鑰(見下)
 ```
 
-只有 `ANTHROPIC_API_KEY` 是必填;Apollo / Hunter / Google Maps 未設定時,
-對應 adapter 會明確報錯,其餘功能照常運作(email 驗證會標為未驗證)。
+**LLM 後端二選一**(`LLM_BACKEND` 環境變數,見 `llm.py`):
+
+| 後端 | 計費 | 需求 | 取捨 |
+|---|---|---|---|
+| `claude_code`(預設) | **Claude 訂閱額度** | 已安裝並登入 Claude Code(`claude` 指令) | 免 API key 免儲值;受訂閱用量上限、單筆較慢、結構化輸出以 JSON 解析實作 |
+| `api` | API 額度(platform.claude.com 儲值) | `ant auth login` 或 `.env` 填 `ANTHROPIC_API_KEY` | 原生結構化輸出 / web_search / vision,品質與速度最佳 |
+
+訂閱方案沒有 Opus 時,設 `CLI_MODEL_TOP=sonnet` 把審稿模型降級。
+Apollo / Hunter / Google Maps 未設定時,對應 adapter 會明確報錯,
+其餘功能照常運作(email 驗證會標為未驗證)。
 
 ## 使用流程
 
@@ -129,8 +137,9 @@ pytest        # 純規則邏輯,不呼叫 API、不需金鑰
 
 ## 營運成本
 
-對應架構報告第 07 節:Claude API 約 $30–80/月(名單開發高峰期偏上緣),
-加上 Apollo / Hunter / Calendly 合計約 **$30–240/月**。`pipeline --limit` 可控制單次批量。
+對應架構報告第 07 節:`claude_code` 後端下 LLM 呼叫**走訂閱額度,不另計費**
+(但受訂閱用量上限限制);`api` 後端約 $30–80/月(名單開發高峰期偏上緣)。
+加上 Apollo / Hunter / Calendly 合計約 **$0–240/月**。`pipeline --limit` 可控制單次批量。
 
 ## 開發里程碑對照
 

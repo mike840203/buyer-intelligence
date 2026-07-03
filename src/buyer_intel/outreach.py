@@ -13,7 +13,7 @@ TIHS 攤位資訊 + Calendly 預約連結。
 from __future__ import annotations
 
 from .config import CALENDLY_URL, MODEL_MID, MODEL_TOP, TIHS_BOOTH
-from .llm import client, text_of
+from .llm import complete, complete_structured
 from .models import CritiqueResult, Interaction, Lead
 
 VALUE_PROP = (
@@ -54,37 +54,27 @@ def draft_email(lead: Lead, hints: str | None = None) -> str:
         + "\nReturn ONLY the email body (with a subject line on the first line as "
         "'Subject: ...')."
     )
-    response = client().messages.create(
-        model=MODEL_MID,
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return text_of(response).strip()
+    return complete(MODEL_MID, prompt, max_tokens=1024)
 
 
 def critique_email(draft: str, lead: Lead) -> CritiqueResult:
     """Opus 扮演美國 buyer 批判信件。一封爛信毀掉一個 A 級 lead,值得用最強模型把關。"""
-    response = client().messages.parse(
-        model=MODEL_TOP,
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"You are a busy US retail buyer at {lead.company} "
-                f"({lead.title or 'buyer'}). You get dozens of cold vendor emails a day "
-                "and delete anything generic. Critique this trade-show outreach email "
-                "ruthlessly:\n\n"
-                f"---\n{draft}\n---\n\n"
-                "Fail it (verdict='revise') if ANY of these are true: over 150 words; "
-                "reads like a template; the 'why you specifically' reason is vague or "
-                "fabricated; value proposition unclear; pushy or hype-y tone; missing "
-                "booth info or booking link. Otherwise verdict='pass'. "
-                "List concrete issues and give rewrite_hints if revising."
-            ),
-        }],
-        output_format=CritiqueResult,
+    result = complete_structured(
+        MODEL_TOP,
+        (
+            f"You are a busy US retail buyer at {lead.company} "
+            f"({lead.title or 'buyer'}). You get dozens of cold vendor emails a day "
+            "and delete anything generic. Critique this trade-show outreach email "
+            "ruthlessly:\n\n"
+            f"---\n{draft}\n---\n\n"
+            "Fail it (verdict='revise') if ANY of these are true: over 150 words; "
+            "reads like a template; the 'why you specifically' reason is vague or "
+            "fabricated; value proposition unclear; pushy or hype-y tone; missing "
+            "booth info or booking link. Otherwise verdict='pass'. "
+            "List concrete issues and give rewrite_hints if revising."
+        ),
+        CritiqueResult,
     )
-    result = response.parsed_output
     if result is None:
         # 解析失敗:保守處理,交人工覆核而非退回重寫
         result = CritiqueResult(verdict="pass", issues=["批判結果解析失敗,請人工加強檢查"])
@@ -107,12 +97,7 @@ def draft_follow_up(lead: Lead) -> str:
         "state the concrete next step (samples / quote / call); no hype. "
         "Return only the email with 'Subject: ...' on the first line."
     )
-    response = client().messages.create(
-        model=MODEL_MID,
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return text_of(response).strip()
+    return complete(MODEL_MID, prompt, max_tokens=1024)
 
 
 def queue_for_review(lead: Lead, draft: str, critique: CritiqueResult) -> Lead:

@@ -7,16 +7,35 @@
 """
 
 import os
+import shutil
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── LLM 後端 ──
+# claude_code(預設):透過 Claude Code CLI 呼叫,走訂閱額度,免 API key/儲值
+# api:Anthropic SDK 直連,需組織有 API 額度,品質與速度最佳
+LLM_BACKEND = os.getenv("LLM_BACKEND", "claude_code")
+# claude 執行檔:環境變數 > PATH > ~/.local/bin/claude(常見安裝位置)
+CLAUDE_CLI = (
+    os.getenv("CLAUDE_CLI")
+    or shutil.which("claude")
+    or str(Path.home() / ".local" / "bin" / "claude")
+)
+
 # ── 模型分工 ──
 MODEL_FAST = "claude-haiku-4-5"   # 清洗、抽取、OCR 後結構化
 MODEL_MID = "claude-sonnet-5"     # 豐富、評分判斷、信件生成
 MODEL_TOP = "claude-opus-4-8"     # 信件批判審稿、疑難策略建議
+
+# claude_code 後端的模型別名映射(訂閱方案沒有 Opus 時,把 top 改成 "sonnet")
+CLI_MODEL_MAP = {
+    MODEL_FAST: os.getenv("CLI_MODEL_FAST", "haiku"),
+    MODEL_MID: os.getenv("CLI_MODEL_MID", "sonnet"),
+    MODEL_TOP: os.getenv("CLI_MODEL_TOP", "opus"),
+}
 
 # ── 路徑 ──
 ROOT = Path(__file__).resolve().parents[2]

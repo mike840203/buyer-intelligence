@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from ..config import MODEL_MID
-from ..llm import client, text_of
+from ..llm import complete
 from ..models import Lead
 
 
@@ -31,9 +31,4 @@ def company_brief(lead: Lead) -> str:
         f"目前階段:{lead.stage}\n"
         f"近期互動:\n{interactions}\n"
     )
-    response = client().messages.create(
-        model=MODEL_MID,
-        max_tokens=1500,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return text_of(response).strip()
+    return complete(MODEL_MID, prompt, max_tokens=1500)
