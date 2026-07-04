@@ -19,6 +19,22 @@
 流程編排使用 **LangGraph**(`graph.py`):條件邊依評分分流、critique 迴圈退回重寫、
 SQLite checkpoint 讓批次中斷後可續跑不重花 API 費用。
 
+```mermaid
+graph TD;
+    S([開始]) --> enrich["enrich<br/>L2 背景豐富<br/>(Sonnet+WebSearch → Haiku 抽取)"];
+    enrich --> score["score<br/>L3 混合評分<br/>(規則 + Sonnet 判斷)"];
+    score -. "A / B 級(≥50)" .-> draft["draft<br/>L4 個人化信件生成<br/>(Sonnet)"];
+    score -. "C 級(<50)歸檔" .-> E([結束]);
+    draft --> critique["critique<br/>Opus 扮演美國 buyer 審稿"];
+    critique -. "revise(上限 3 輪)" .-> draft;
+    critique -. "pass" .-> review["review<br/>人工覆核佇列<br/>(pending_draft 入庫)"];
+    review --> E;
+```
+
+> 每筆 lead 以 `thread_id=lead-{id}` 執行本圖;每個節點結束即寫回
+> `leads.db`,checkpoint 存於 `checkpoints.db`,中斷後續跑不重花費用。
+> T0 Rep 在 score 節點直接標 A 級走信件通道(獨立於零售商評分)。
+
 ### 模型分工(已更新為現行模型 ID)
 
 | 任務 | 模型 ID | 理由 |
