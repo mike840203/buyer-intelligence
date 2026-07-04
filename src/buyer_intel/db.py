@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS idx_leads_company ON leads(company);
 @contextmanager
 def _conn():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    # timeout=30:平行 pipeline 時多執行緒寫入,等待鎖而非直接報 database is locked
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
         yield conn

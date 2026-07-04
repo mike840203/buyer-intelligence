@@ -14,7 +14,8 @@
 | L2 清洗豐富 | `enrich.py` | 去重(rapidfuzz 模糊比對 + email domain)、Hunter 驗證、web 搜尋背景補全 | Sonnet 搜尋 + Haiku 抽取 |
 | L3 評分分級 | `scoring.py` | 規則基礎分 + LLM 契合度判斷,加權後分 A/B/C;C 級自動歸檔 | Sonnet |
 | L4 觸達引擎 | `outreach.py` | 個人化信件生成 → Opus 扮演美國 buyer 批判 → 重寫迴圈(≤3 輪)→ 人工覆核 | Sonnet 寫 + Opus 審 |
-| L5 展中作戰 | `field_ops/`、`dashboard.py` | 名片 OCR、即時 company brief、same-day follow-up、pipeline 看板 | Haiku + Sonnet |
+| L5 展中作戰 | `field_ops/`、`webui/` | 名片 OCR、即時 company brief、same-day follow-up、pipeline 看板 | Haiku + Sonnet |
+| 操作介面 | `webui/`(主)、`cli.py` | 全功能 Web UI:名單/覆核改稿/一鍵寄信/追蹤/匯入/背景 pipeline | — |
 
 流程編排使用 **LangGraph**(`graph.py`):條件邊依評分分流、critique 迴圈退回重寫、
 SQLite checkpoint 讓批次中斷後可續跑不重花 API 費用。
@@ -138,7 +139,20 @@ Apollo / Hunter / Google Maps 未設定時,對應 adapter 會明確報錯,
 **三個外部工具的申請步驟、方案額度與疑難排解,見 [docs/](docs/) 資料夾**:
 [Apollo](docs/apollo.md)、[Hunter](docs/hunter.md)、[Google Maps](docs/google-maps.md)。
 
-## 使用流程
+## 使用方式 A:Web UI(建議,唯一要打的指令)
+
+```bash
+buyer-intel serve        # 然後瀏覽器開 http://localhost:8000
+```
+
+所有操作都在網頁完成:**儀表板**(漏斗+逾期警示)、**名單**(篩選/搜尋/詳情;
+同公司**全部聯絡人都保留**,詳情頁一鍵切換主收件人——寄給誰由你決定)、
+**覆核佇列**(線上改稿+核准+一鍵開郵件寄信)、**匯入名單**(拖放 CSV,
+去重明細即時顯示)、**Pipeline**(背景執行+即時日誌,可關頁)、
+**推進階段**(回信/會議/樣品/報價/PO 按鈕)、**名片掃描**(手機開
+`http://<電腦IP>:8000/card`)。開發信一律全英文(三重語言防線)。
+
+## 使用方式 B:CLI(腳本化用,功能相同)
 
 ```bash
 # 0. 建庫
@@ -203,13 +217,17 @@ buyer-intelligence/
 │   ├── enrich.py            # L2:去重、email 驗證、web 搜尋豐富
 │   ├── scoring.py           # L3:混合式評分與分級
 │   ├── outreach.py          # L4:draft → critique → rewrite + follow-up
-│   ├── graph.py             # LangGraph 編排 + SQLite checkpoint
-│   ├── field_ops/           # L5:ocr.py / brief.py / app.py(FastAPI)
-│   ├── dashboard.py         # L5:pipeline 看板 HTML
-│   └── cli.py               # buyer-intel 指令入口
+│   ├── graph.py             # LangGraph 編排 + SQLite checkpoint + prepare_batch
+│   ├── actions.py           # 共用業務動作(核准/退回/寄信/track,CLI 與 UI 共用)
+│   ├── webui/               # ★ Web UI:app.py(全部頁面)+ jobs.py(背景任務)
+│   ├── field_ops/           # L5:ocr.py(名片)/ brief.py(攻略)
+│   ├── dashboard.py         # 靜態看板 HTML(Web UI 首頁為即時版)
+│   └── cli.py               # buyer-intel 指令入口(serve 啟動 Web UI)
 ├── docs/                    # 外部工具指南(Apollo / Hunter / Google Maps)
 ├── tests/                   # 規則評分與去重的單元測試(不需 API 金鑰)
 ├── examples/seed_leads.csv  # 種子名單範例(T1 咖啡器材電商)
+├── imports/                 # 匯入的名單 CSV(git 忽略,含個資)
+├── outbox/                  # 核准信件 .eml(git 忽略)
 ├── PROGRESS.md              # 專案日誌(新條目往上加)
 └── data/                    # leads.db / checkpoints.db(git 忽略)
 ```
@@ -243,11 +261,11 @@ pytest        # 純規則邏輯,不呼叫 API、不需金鑰
 
 ### 短期:驗證期(現在 → 2026-08,對應 M1)
 
-- [ ] `buyer-intel review` 覆核 Prima Coffee 的信件草稿(已在佇列)→ 輸出 `outbox/`
-- [ ] `buyer-intel pipeline` 跑完剩餘 3 筆種子名單(Seattle Coffee Gear、
-      Clive Coffee 在 P1 地區 PNW,預期 A 級,可對照驗證評分模型)
+- [x] 首批真實名單(Apollo 匯出 25 人 → 18 家)完成匯入、評分與信件生成;
+      評分模型驗證通過(P1/芝加哥烘豆商 A、通路不合者 C、T3 被攔)
+- [ ] Web UI 覆核佇列逐封核准 → 一鍵開郵件寄出第一批開發信
 - [x] 申請 Apollo 帳號 → 已填 `APOLLO_API_KEY`(注意:**People Search API 需付費方案**,
-      免費方案改走網頁搜尋 → 匯出 CSV → `ingest --source manual`)
+      免費方案改走網頁搜尋 → 匯出 CSV → Web UI 匯入頁上傳)
 - [ ] 申請 Hunter 免費帳號 → 填 `HUNTER_API_KEY`(email 驗證,退信率是網域信譽命脈)
 - [ ] 申請 Google Maps 金鑰 → 填 `GOOGLE_MAPS_API_KEY`(掃 P1/P2 城市獨立店家)
 - [ ] 建 Calendly 活動(「TIHS 攤位會議 30 分鐘」)→ 填 `CALENDLY_URL`

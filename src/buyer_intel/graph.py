@@ -7,6 +7,8 @@
   等同 fan-out),與報告骨架語意一致。
 - Checkpoint:SqliteSaver 持久化每個節點後的狀態;跑 500 筆斷線,
   重啟後以同一 thread_id 續跑,不重花 API 費用。
+- State 一律存原生 dict(Pydantic 物件在節點內重建):checkpoint 序列化
+  不含自訂型別,避免 langgraph msgpack 的相容性警告與未來版本封鎖。
 - 每個節點結束時同步寫回 leads.db,人工覆核佇列隨時可查。
 """
 
@@ -21,64 +23,77 @@ from langgraph.graph import END, StateGraph
 from . import db
 from .config import CHECKPOINT_PATH, DATA_DIR, MAX_CRITIQUE_ROUNDS
 from .enrich import enrich_lead
-from .models import CritiqueResult, Lead
+from .models import Lead
 from .outreach import critique_email, draft_email, queue_for_review
 from .scoring import score_lead
 
 
 class LeadState(TypedDict):
-    """圖中流動的共享狀態:一筆 lead 及其信件草稿與批判結果。"""
+    """圖中流動的共享狀態:全部為 JSON 相容的原生型別。"""
 
-    lead: Lead
+    lead: dict            # Lead.model_dump(mode="json")
     draft: str | None
-    critique: CritiqueResult | None
+    critique: dict | None  # CritiqueResult.model_dump()
     revisions: int
+
+
+def _lead(state: LeadState) -> Lead:
+    return Lead.model_validate(state["lead"])
+
+
+def _dump(lead: Lead) -> dict:
+    return lead.model_dump(mode="json")
 
 
 # ── 節點 ──
 
 def node_enrich(state: LeadState) -> dict:
-    lead = enrich_lead(state["lead"])
+    lead = enrich_lead(_lead(state))
     db.save_lead(lead)
-    return {"lead": lead}
+    return {"lead": _dump(lead)}
 
 
 def node_score(state: LeadState) -> dict:
-    lead = score_lead(state["lead"])
+    lead = score_lead(_lead(state))
     db.save_lead(lead)
-    return {"lead": lead}
+    return {"lead": _dump(lead)}
 
 
 def node_draft(state: LeadState) -> dict:
-    hints = state["critique"].rewrite_hints if state["critique"] else None
-    draft = draft_email(state["lead"], hints=hints)
+    hints = (state["critique"] or {}).get("rewrite_hints")
+    draft = draft_email(_lead(state), hints=hints)
     return {"draft": draft, "revisions": state["revisions"] + 1}
 
 
 def node_critique(state: LeadState) -> dict:
     assert state["draft"] is not None
-    return {"critique": critique_email(state["draft"], state["lead"])}
+    result = critique_email(state["draft"], _lead(state))
+    return {"critique": result.model_dump()}
 
 
 def node_review(state: LeadState) -> dict:
     """人工覆核佇列:草稿掛上 lead 入庫,等 CLI `review` 處理。"""
+    from .models import CritiqueResult
+
     assert state["draft"] is not None and state["critique"] is not None
-    lead = queue_for_review(state["lead"], state["draft"], state["critique"])
+    lead = queue_for_review(
+        _lead(state), state["draft"], CritiqueResult.model_validate(state["critique"])
+    )
     db.save_lead(lead)
-    return {"lead": lead}
+    return {"lead": _dump(lead)}
 
 
 # ── 條件邊 ──
 
 def route_by_grade(state: LeadState) -> str:
-    """評分決定去向:A/B 進觸達;C 歸檔。"""
-    return state["lead"].grade or "C"
+    """評分決定去向:A/B 進觸達;C(含未分級,如被歸檔的 T3)結束。"""
+    return state["lead"].get("grade") or "C"
 
 
 def route_by_quality(state: LeadState) -> str:
     """信不及格退回重寫;達輪數上限則強制進人工覆核(人是最後防線)。"""
     assert state["critique"] is not None
-    if state["critique"].verdict == "pass" or state["revisions"] >= MAX_CRITIQUE_ROUNDS:
+    if state["critique"]["verdict"] == "pass" or state["revisions"] >= MAX_CRITIQUE_ROUNDS:
         return "pass"
     return "revise"
 
@@ -110,19 +125,77 @@ def build_graph():
     return graph.compile(checkpointer=checkpointer)
 
 
-def run_pipeline(leads: list[Lead]) -> list[Lead]:
-    """對每筆 lead 執行流程圖;thread_id 綁 lead id,斷線可續跑。"""
+def prepare_batch(limit: int | None = None) -> tuple[list[Lead], list[str]]:
+    """選出本批可跑的新名單:跳過待覆核者、T3 直接歸檔。回傳 (名單, 訊息)。
+
+    CLI 與 Web UI 共用此入口,戰略防線只寫一份。
+    """
+    from .scoring import archive_t3
+
+    messages: list[str] = []
+    leads = db.list_leads(stage="new")
+
+    pending = [l for l in leads if l.pending_draft]
+    if pending:
+        messages.append(f"跳過 {len(pending)} 筆待覆核名單(先去覆核佇列處理)")
+    leads = [l for l in leads if not l.pending_draft]
+
+    for lead in [l for l in leads if l.tier == "T3_mass"]:
+        db.save_lead(archive_t3(lead))
+        messages.append(f"⛔ {lead.company}:T3 大型量販,依戰略不主動觸達,已歸檔")
+    leads = [l for l in leads if l.tier != "T3_mass"]
+
+    if limit:
+        leads = leads[:limit]
+    return leads, messages
+
+
+def _process_one(lead: Lead) -> Lead:
+    """單筆 lead 跑完整圖。每個呼叫自建 graph(獨立 checkpoint 連線,執行緒安全)。"""
     app = build_graph()
+    if lead.id is None:
+        lead = db.save_lead(lead)
+    state: LeadState = {
+        "lead": lead.model_dump(mode="json"),
+        "draft": None, "critique": None, "revisions": 0,
+    }
+    config = {"configurable": {"thread_id": f"lead-{lead.id}"}}
+    final = app.invoke(state, config=config)
+    return Lead.model_validate(final["lead"])
+
+
+def run_pipeline(
+    leads: list[Lead], workers: int = 3, on_message=print
+) -> list[Lead]:
+    """對每筆 lead 執行流程圖;thread_id 綁 lead id,斷線可續跑。
+
+    - workers > 1 時平行處理(lead 彼此獨立),3 個 worker 約快 3 倍
+    - 單筆失敗不中斷整批
+    - on_message:進度訊息回呼(CLI 用 print,Web UI 導進任務日誌)
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     results: list[Lead] = []
-    for lead in leads:
-        if lead.id is None:
-            lead = db.save_lead(lead)
-        state: LeadState = {
-            "lead": lead, "draft": None, "critique": None, "revisions": 0,
-        }
-        config = {"configurable": {"thread_id": f"lead-{lead.id}"}}
-        final = app.invoke(state, config=config)
-        results.append(final["lead"])
-        print(f"  ✔ {lead.company} → 分級 {final['lead'].grade or '—'}"
-              f"{',已排入覆核佇列' if final['lead'].pending_draft else ''}")
+
+    def report(done: Lead) -> None:
+        results.append(done)
+        on_message(f"✔ {done.company} → 分級 {done.grade or '—'}"
+                    f"{',已排入覆核佇列' if done.pending_draft else ''}")
+
+    if workers <= 1:
+        for lead in leads:
+            try:
+                report(_process_one(lead))
+            except Exception as exc:  # noqa: BLE001 — 單筆失敗不拖垮整批
+                on_message(f"✘ {lead.company} 處理失敗:{exc}")
+        return results
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_process_one, lead): lead for lead in leads}
+        for future in as_completed(futures):
+            lead = futures[future]
+            try:
+                report(future.result())
+            except Exception as exc:  # noqa: BLE001
+                on_message(f"✘ {lead.company} 處理失敗:{exc}")
     return results

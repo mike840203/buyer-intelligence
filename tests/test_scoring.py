@@ -1,10 +1,12 @@
 """L3 規則評分的單元測試(不呼叫 API)。"""
 
+from buyer_intel.models import Lead
 from buyer_intel.scoring import (
     grade_of,
     rule_authority_score,
     rule_region_score,
     rule_size_score,
+    score_lead,
 )
 
 
@@ -37,3 +39,22 @@ def test_grade_thresholds():
     assert grade_of(69.9) == "B"
     assert grade_of(50) == "B"
     assert grade_of(49.9) == "C"
+
+
+def test_t3_mass_never_contacted():
+    """戰略防線:T3 大型量販第一年不主動進攻——必須在任何 LLM 呼叫前歸檔。
+
+    (本測試不需 API 金鑰,若 T3 防線失效會嘗試呼叫 LLM 而報錯)
+    """
+    lead = score_lead(Lead(company="Costco", tier="T3_mass"))
+    assert lead.stage == "archived"
+    assert lead.grade is None
+    assert "不主動進攻" in (lead.score_rationale or "")
+
+
+def test_t0_rep_bypasses_retail_scoring():
+    """T0 Rep 獨立通道:不套零售商評分,直接 A 級進觸達。"""
+    lead = score_lead(Lead(company="Some Rep Group", tier="T0_rep"))
+    assert lead.grade == "A"
+    assert lead.score is None
+    assert lead.stage != "archived"

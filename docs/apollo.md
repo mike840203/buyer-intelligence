@@ -44,12 +44,13 @@ Merchandising Manager、Owner。
      `Buyer, Category Manager, Merchandising Manager, Owner`,
      Location 填 `Washington, US / Oregon, US / Texas, US`,
      關鍵字 `specialty coffee` 或 `kitchenware`
-   - Export → CSV,欄位對齊 `examples/seed_leads.csv` 的格式
-     (`company, contact_name, title, email, website, city, state, tier`)
-   - 匯入:
-     ```bash
-     buyer-intel ingest --source manual --file 匯出檔.csv
-     ```
+   - Export → CSV,**不需要改欄位名**——`manual` adapter 會自動識別
+     Apollo 匯出格式(First/Last Name 自動合併、Company/State 自動映射、
+     Industry 與員工數收進備註)
+   - 匯入(擇一):
+     - **Web UI(建議)**:`buyer-intel serve` → http://localhost:8000/import
+       直接上傳,去重明細顯示在結果頁
+     - CLI:檔案放 `imports/` → `buyer-intel ingest --source manual --file imports/匯出檔.csv`
 2. **公司補全 API**(免費可用,尚未接入系統,需要時可加):
    以網域查公司規模/產業/LinkedIn,適合補強 L2。
 

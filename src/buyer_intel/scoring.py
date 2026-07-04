@@ -95,8 +95,28 @@ def grade_of(score: float) -> Grade:
     return "C"
 
 
+def archive_t3(lead: Lead) -> Lead:
+    """T3 大型量販防線:戰略明訂第一年不主動進攻,自動歸檔。
+
+    若對方主動接觸(如展中來訪掃名片),仍走 L5 的 follow-up 流程,
+    並依戰略交由 Rep 評估——本防線只擋「系統主動 outreach」。
+    """
+    lead.score = None
+    lead.grade = None
+    lead.stage = "archived"
+    lead.score_rationale = (
+        "T3 大型量販:依戰略報告第一年不主動進攻(量大壓價深、帳期長、"
+        "需 Rep 引路),自動歸檔不觸達。若對方主動接觸,交由 Rep 評估。"
+    )
+    return lead
+
+
 def score_lead(lead: Lead) -> Lead:
     """L3 完整流程:計分、分級、寫入可解釋 rationale。"""
+    # T3 防線:在任何 LLM 呼叫之前攔截,不花一毛額度
+    if lead.tier == "T3_mass":
+        return archive_t3(lead)
+
     # Rep Group 走獨立通道:不套零售商評分,直接進 outreach 並標註人工評估
     if lead.tier == "T0_rep":
         lead.score = None

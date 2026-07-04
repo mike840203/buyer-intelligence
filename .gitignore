@@ -14,6 +14,7 @@ data/*.db
 data/*.db-*
 outbox/
 dashboard.html
+imports/          # 匯入的名單 CSV(含個資 email,不進版控)
 
 # 編輯器
 .DS_Store

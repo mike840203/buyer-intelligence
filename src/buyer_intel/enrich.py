@@ -16,7 +16,7 @@ from rapidfuzz import fuzz
 
 from .config import HUNTER_API_KEY, KNOWN_COMPETITORS, MODEL_FAST, MODEL_MID
 from .llm import complete, complete_structured
-from .models import EnrichmentFacts, Lead, RawLead, Region
+from .models import AltContact, EnrichmentFacts, Lead, RawLead, Region
 
 # 州別 → 戰略地區映射(對應戰略報告「目標地區優先序」)
 STATE_TO_REGION: dict[str, Region] = {
@@ -35,10 +35,23 @@ def map_region(state: str | None) -> Region:
     return STATE_TO_REGION.get(state.upper().strip(), "OTHER")
 
 
+# 免費信箱網域:不能當「同公司」證據(兩家小店都用 gmail 不代表是同一家)
+FREEMAIL_DOMAINS = {
+    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+    "aol.com", "live.com", "msn.com", "me.com", "protonmail.com", "proton.me",
+}
+
+
 def _domain(email: str | None) -> str | None:
     if email and "@" in email:
         return email.split("@", 1)[1].lower()
     return None
+
+
+def _corporate_domain(email: str | None) -> str | None:
+    """公司網域:免費信箱回 None,不參與同網域去重。"""
+    domain = _domain(email)
+    return None if domain in FREEMAIL_DOMAINS else domain
 
 
 # 公司名正規化:去除法律後綴與標點,避免 "Foo, Inc." 與 "Foo" 被視為兩家
@@ -52,30 +65,79 @@ def _normalize_company(name: str) -> str:
     return re.sub(r"[^\w\s]", " ", name).strip()
 
 
-def dedupe(raw_leads: list[RawLead], threshold: int = 90) -> list[RawLead]:
-    """去重:email domain 相同、或公司名模糊比對 ≥ threshold 視為同一家。
+# 品類對口關鍵字:職稱帶這些字的買手,就是 Ankomn 該敲的門
+CATEGORY_TITLE_KEYWORDS = [
+    "hardgood", "housewares", "home", "kitchen", "coffee",
+    "seasonal", "decor", "tabletop", "gourmet",
+]
+BUYER_TITLE_KEYWORDS = ["buyer", "category", "purchas", "merchandis"]
+OWNER_TITLE_KEYWORDS = ["owner", "founder", "ceo", "president"]
 
-    保留資訊較完整的一筆(有 email / 聯絡人者優先)。
+
+def _contact_priority(l: RawLead) -> tuple[int, int]:
+    """同公司多聯絡人時的保留優先序。
+
+    品類對口 Buyer(4)> Owner/Founder(3)> 泛 Buyer(2)> 有職稱(1)> 無(0);
+    同級以欄位完整度決勝。邏輯:公司大到有品類買手,門就是買手;
+    小店沒有買手,Owner 自然勝出。
     """
-    def richness(l: RawLead) -> int:
-        return sum(bool(v) for v in (l.email, l.contact_name, l.title, l.website))
+    title = (l.title or "").lower()
+    is_buyer = any(k in title for k in BUYER_TITLE_KEYWORDS)
+    if is_buyer and any(k in title for k in CATEGORY_TITLE_KEYWORDS):
+        rank = 4
+    elif any(k in title for k in OWNER_TITLE_KEYWORDS):
+        rank = 3
+    elif is_buyer:
+        rank = 2
+    elif title:
+        rank = 1
+    else:
+        rank = 0
+    richness = sum(bool(v) for v in (l.email, l.contact_name, l.title, l.website))
+    return (rank, richness)
 
+
+def dedupe(
+    raw_leads: list[RawLead], threshold: int = 90, verbose: bool = False
+) -> list[RawLead]:
+    """去重:公司 email 網域相同、或公司名模糊比對 ≥ threshold 視為同一家。
+
+    - 一家公司只留一筆:依 _contact_priority 挑最該敲門的聯絡人
+    - 被移除的同公司聯絡人存進保留者的 notes 作為「備援聯絡人」
+    - 免費信箱(gmail 等)不當「同公司」證據,避免錯殺不同的小店
+    - verbose=True 時逐筆印出被移除者與原因,供人工檢查
+    """
     kept: list[RawLead] = []
-    for lead in sorted(raw_leads, key=richness, reverse=True):
-        dup = False
+    for lead in sorted(raw_leads, key=_contact_priority, reverse=True):
+        reason = None
+        matched: RawLead | None = None
         for existing in kept:
             same_domain = (
-                _domain(lead.email) is not None
-                and _domain(lead.email) == _domain(existing.email)
+                _corporate_domain(lead.email) is not None
+                and _corporate_domain(lead.email) == _corporate_domain(existing.email)
             )
             similar_name = fuzz.token_sort_ratio(
                 _normalize_company(lead.company), _normalize_company(existing.company)
             ) >= threshold
             if same_domain or similar_name:
-                dup = True
+                reason = (
+                    f"同公司已保留 {existing.contact_name or '無聯絡人'}"
+                    f"({existing.title or '無職稱'})"
+                    f"——判定依據:{'email 網域相同' if same_domain else '公司名相同'}"
+                )
+                matched = existing
                 break
-        if not dup:
+        if matched is None:
             kept.append(lead)
+            continue
+        # 同公司的其他聯絡人:結構化保留(不丟棄),UI 上可一鍵切換為主要收件人
+        matched.alt_contacts.append(AltContact(
+            contact_name=lead.contact_name, title=lead.title, email=lead.email,
+        ))
+        matched.alt_contacts.extend(lead.alt_contacts)  # 傳遞其自身的備援
+        if verbose:
+            print(f"  ✂ 併入備選「{lead.company}」({lead.contact_name or '無聯絡人'}"
+                  f",{lead.title or '無職稱'})—— {reason}(全部保留,UI 可切換收件人)")
     return kept
 
 
@@ -107,6 +169,7 @@ def to_lead(raw: RawLead) -> Lead:
         region=map_region(raw.state),
         source=raw.source,
         enrichment_notes=raw.notes,
+        alt_contacts=raw.alt_contacts,
     )
     if lead.email:
         try:

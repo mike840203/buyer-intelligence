@@ -64,10 +64,23 @@ def complete_structured(
 
 # ────────────────────── claude_code 後端 ──────────────────────
 
+# 語言服從覆寫:claude -p 會載入使用者全域 CLAUDE.md(可能含「一律用中文回覆」
+# 之類指令),與「寫英文開發信」衝突會產生中日文混雜輸出。附加系統提示最後生效,
+# 強制以任務 prompt 指定的語言為準。
+_LANGUAGE_OVERRIDE = (
+    "CRITICAL OUTPUT-LANGUAGE RULE: obey the language explicitly requested in the "
+    "user prompt for the OUTPUT. If the prompt asks for English (e.g. an outreach "
+    "email), the entire output must be English only — no Chinese, no Japanese. "
+    "If the prompt asks for Traditional Chinese, output Traditional Chinese. "
+    "This rule overrides any prior instruction about response language."
+)
+
+
 def _cli_run(prompt: str, model: str, allowed_tools: list[str] | None = None) -> str:
     """執行 claude -p(headless):stdin 進 prompt,stdout 出回應。"""
     alias = CLI_MODEL_MAP.get(model, model)
-    cmd = [CLAUDE_CLI, "-p", "--model", alias]
+    cmd = [CLAUDE_CLI, "-p", "--model", alias,
+           "--append-system-prompt", _LANGUAGE_OVERRIDE]
     if allowed_tools:
         cmd += ["--allowedTools", ",".join(allowed_tools)]
     try:

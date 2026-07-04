@@ -19,6 +19,14 @@ Stage = Literal[
 Grade = Literal["A", "B", "C"]
 
 
+class AltContact(BaseModel):
+    """同公司的其他聯絡人:去重時不丟棄,UI 上可一鍵切換為主要收件人。"""
+
+    contact_name: str | None = None
+    title: str | None = None
+    email: str | None = None
+
+
 class RawLead(BaseModel):
     """L1 各 adapter 的統一輸出格式。"""
 
@@ -32,6 +40,7 @@ class RawLead(BaseModel):
     tier: Tier = "T1_coffee"
     source: str = "manual"         # apollo / places / iha / manual / ocr
     notes: str | None = None
+    alt_contacts: list[AltContact] = Field(default_factory=list)
 
 
 class Interaction(BaseModel):
@@ -64,6 +73,7 @@ class Lead(BaseModel):
     store_count: int | None = None
     sells_competitors: bool | None = None   # 已賣 Fellow Atmos 等競品 → 品類有貨架
     enrichment_notes: str | None = None     # L2 web 搜尋補全的背景摘要
+    alt_contacts: list[AltContact] = Field(default_factory=list)  # 同公司其他聯絡人
 
     # ── 評分 ──
     score: float | None = None              # 0–100

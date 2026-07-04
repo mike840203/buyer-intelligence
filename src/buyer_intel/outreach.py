@@ -12,9 +12,27 @@ TIHS 攤位資訊 + Calendly 預約連結。
 
 from __future__ import annotations
 
+import re
+
 from .config import CALENDLY_URL, MODEL_MID, MODEL_TOP, TIHS_BOOTH
 from .llm import complete, complete_structured
 from .models import CritiqueResult, Interaction, Lead
+
+# CJK 偵測(含日文假名):開發信必須全英文,出現任何 CJK 即重寫一次
+_CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
+
+
+def _force_english(prompt: str, first_draft: str) -> str:
+    """信件含 CJK 字元時,帶著警告重生成一次(最後防線是 Opus 審稿)。"""
+    if not _CJK_RE.search(first_draft):
+        return first_draft
+    retry = complete(
+        MODEL_MID,
+        prompt + "\n\nWARNING: your previous attempt contained Chinese/Japanese "
+                 "characters. The ENTIRE output must be English only. Rewrite.",
+        max_tokens=1024,
+    )
+    return retry
 
 VALUE_PROP = (
     "Ankomn makes patented crank-vacuum food storage containers (designed and made "
@@ -43,6 +61,8 @@ def draft_email(lead: Lead, hints: str | None = None) -> str:
             "Pitch a wholesale/stocking conversation.\n"
         )
         + "Hard requirements:\n"
+        "- The ENTIRE output must be in ENGLISH ONLY — zero Chinese or Japanese "
+        "characters anywhere, including the subject line\n"
         "- Under 150 words, plain text, no bullet lists\n"
         "- One-sentence value proposition\n"
         "- A SPECIFIC reason why we reached out to THIS company (use what we know; "
@@ -54,7 +74,7 @@ def draft_email(lead: Lead, hints: str | None = None) -> str:
         + "\nReturn ONLY the email body (with a subject line on the first line as "
         "'Subject: ...')."
     )
-    return complete(MODEL_MID, prompt, max_tokens=1024)
+    return _force_english(prompt, complete(MODEL_MID, prompt, max_tokens=1024))
 
 
 def critique_email(draft: str, lead: Lead) -> CritiqueResult:
@@ -67,10 +87,11 @@ def critique_email(draft: str, lead: Lead) -> CritiqueResult:
             "and delete anything generic. Critique this trade-show outreach email "
             "ruthlessly:\n\n"
             f"---\n{draft}\n---\n\n"
-            "Fail it (verdict='revise') if ANY of these are true: over 150 words; "
-            "reads like a template; the 'why you specifically' reason is vague or "
-            "fabricated; value proposition unclear; pushy or hype-y tone; missing "
-            "booth info or booking link. Otherwise verdict='pass'. "
+            "Fail it (verdict='revise') if ANY of these are true: contains ANY "
+            "non-English text (Chinese/Japanese characters — instant fail); over "
+            "150 words; reads like a template; the 'why you specifically' reason "
+            "is vague or fabricated; value proposition unclear; pushy or hype-y "
+            "tone; missing booth info or booking link. Otherwise verdict='pass'. "
             "List concrete issues and give rewrite_hints if revising."
         ),
         CritiqueResult,
@@ -87,7 +108,8 @@ def draft_follow_up(lead: Lead) -> str:
         f"- {i.content}" for i in lead.interactions if i.kind == "meeting_note"
     ) or "(no meeting notes recorded)"
     prompt = (
-        "Write a same-day follow-up email in English after meeting this buyer at "
+        "Write a same-day follow-up email in ENGLISH ONLY (zero Chinese/Japanese "
+        "characters) after meeting this buyer at "
         "The Inspired Home Show booth today.\n\n"
         f"Company: {lead.company}\n"
         f"Contact: {lead.contact_name or 'the buyer'} ({lead.title or ''})\n"
@@ -97,7 +119,7 @@ def draft_follow_up(lead: Lead) -> str:
         "state the concrete next step (samples / quote / call); no hype. "
         "Return only the email with 'Subject: ...' on the first line."
     )
-    return complete(MODEL_MID, prompt, max_tokens=1024)
+    return _force_english(prompt, complete(MODEL_MID, prompt, max_tokens=1024))
 
 
 def queue_for_review(lead: Lead, draft: str, critique: CritiqueResult) -> Lead:

@@ -4,6 +4,77 @@
 
 ---
 
+## 2026-07-05 收件人自主權 + 英文信三重防線
+
+1. **去重改為「全部保留」**:同公司多聯絡人結構化存 `alt_contacts`
+   (姓名/職稱/email 完整),UI 詳情頁列全表、「設為主收件人」一鍵切換
+   (原主退為備選,換人自動重置驗證旗標)。演算法只給預設,寄給誰由人判斷。
+   注意:既有名單的備援還在 notes 文字裡;重新匯入 CSV 即得結構化版本。
+2. **英文信混入日文的根因與修復**:`claude -p` 子程序會載入使用者全域
+   CLAUDE.md「一律繁中回覆」,與寫英文信指令衝突 → CJK 混入。
+   三重防線:`--append-system-prompt` 語言覆寫 + 生成後 CJK 正則偵測重寫
+   (含日文假名)+ Opus 審稿把非英文列 instant fail。
+3. 測試 15 → 18;規格書、README 同步更新。
+
+---
+
+## 2026-07-04(四)全面 Web UI 化 + 平行加速 + 最終文件
+
+1. **Web UI(`src/buyer_intel/webui/`,新資料夾)**:日常操作不再需要 CLI,
+   `buyer-intel serve` 後全部在 http://localhost:8000 —— 儀表板/名單/覆核
+   (可線上改稿)/mailto 一鍵寄信/track 按鈕/CSV 匯入/pipeline 背景執行含
+   即時日誌/名片掃描(手機 /card)。九條路由煙霧測試全過。
+2. **共用層重構**:業務動作抽到 `actions.py`、批次準備抽到
+   `graph.prepare_batch()`——CLI 與 UI 共用同一份邏輯。
+3. **pipeline 平行化**:`--workers`(預設 3)約快 3 倍;單筆失敗不拖垮整批;
+   SQLite 加 timeout 防鎖。慢的根因是 L2 真的上網查公司(1–3 分/筆)+
+   claude_code 後端程序冷啟動,是 $0 成本的代價;量產期可切 LLM_BACKEND=api。
+4. **去重演算法兩次進化**(使用者真實 Apollo 資料驅動):免費信箱不當同公司
+   證據(gmail 誤殺 bug);同公司多聯絡人依「品類買手 > Owner > 泛買手」
+   保留,落選者轉備援聯絡人存 notes;訊息顯示保留者職稱與判定依據。
+5. **最終文件**(plan/):`ankomn_strategy_report_final.html`(給老闆簽核:
+   名單數學、預算 $20–35K、單位經濟、MAP、決策請求、六條驗算)+
+   `buyer_intelligence_architecture_v2.html`(as-built 規格書,可據此重建)。
+6. 測試 17/17;實測結果:芝加哥三家精品烘豆商全 A、PersonalizationMall C、
+   Costco 被 T3 防線攔截。
+
+---
+
+## 2026-07-04(三)戰略防線修復 + 全名單首輪完成
+
+### 修復(計畫比對發現的偏差)
+
+1. **T3 大型量販「不主動觸達」防線**(🔴 違反戰略,已修):
+   `scoring.archive_t3()` 在任何 LLM 呼叫前攔截歸檔;`cli` pipeline 入口
+   再攔一次連 L2 成本都不花。實測 Costco 被 `⛔` 秒攔,零額度。
+   L5 展中被動接觸不受影響(符合戰略「交由 Rep 評估」)。
+2. **pipeline 不再重跑待覆核 lead**:有 `pending_draft` 者跳過並提示。
+3. **checkpoint 警告根治**:graph state 改存原生 dict(節點內重建 Pydantic),
+   舊 `checkpoints.db` 已清除重建。實測新跑無任何警告。
+4. 測試 8 → 10(新增 T3 防線、T0 獨立通道),全過。
+
+### 首輪名單結果(評分模型驗證 ✅ 符合戰略預期)
+
+| 公司 | 地區 | 分級 | 分數 | 狀態 |
+|---|---|---|---|---|
+| Seattle Coffee Gear | PNW(P1) | A | 77.5 | 已核准 |
+| Clive Coffee | PNW(P1) | A | 74.7 | 已核准 |
+| Visions Espresso | PNW(P1) | A | 73.4 | 待覆核 |
+| Whole Latte Love | NY(P2) | A | 71.1 | 已核准 |
+| Prima Coffee Equipment | KY(OTHER) | B | 62.7 | 已核准 |
+| Costco Wholesale | T3 | — | — | ⛔ 依戰略歸檔 |
+
+P1 地區全 A、OTHER 地區 B、T3 被攔——權重設計與戰略地區優先序一致。
+
+### ⚠️ 當前瓶頸(明確)
+
+outbox/ 四封核准信**全部沒有收件人**——種子名單只有公司沒有聯絡人。
+下一步唯一要事:Apollo 網頁搜尋(Owner/Buyer 職稱 × WA/OR/TX × 員工 ≤200)
+匯出含 email 的名單。已決策:驗證期用手動搜尋(篩選器更多、可先用
+商業判斷粗篩、員工數上限天然執行 T3 防線),量產期再評估升級 API。
+
+---
+
 ## 2026-07-04(補記)計畫 vs 現實 事實核對
 
 兩份規劃文件(`plan/`)仍然有效,大方向不變;架構報告有三處事實更新:
