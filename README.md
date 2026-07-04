@@ -71,6 +71,9 @@ cp .env.example .env   # 依需求填入金鑰(見下)
 Apollo / Hunter / Google Maps 未設定時,對應 adapter 會明確報錯,
 其餘功能照常運作(email 驗證會標為未驗證)。
 
+**三個外部工具的申請步驟、方案額度與疑難排解,見 [docs/](docs/) 資料夾**:
+[Apollo](docs/apollo.md)、[Hunter](docs/hunter.md)、[Google Maps](docs/google-maps.md)。
+
 ## 使用流程
 
 ```bash
@@ -140,8 +143,10 @@ buyer-intelligence/
 │   ├── field_ops/           # L5:ocr.py / brief.py / app.py(FastAPI)
 │   ├── dashboard.py         # L5:pipeline 看板 HTML
 │   └── cli.py               # buyer-intel 指令入口
+├── docs/                    # 外部工具指南(Apollo / Hunter / Google Maps)
 ├── tests/                   # 規則評分與去重的單元測試(不需 API 金鑰)
 ├── examples/seed_leads.csv  # 種子名單範例(T1 咖啡器材電商)
+├── PROGRESS.md              # 專案日誌(新條目往上加)
 └── data/                    # leads.db / checkpoints.db(git 忽略)
 ```
 
