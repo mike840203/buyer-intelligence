@@ -125,6 +125,23 @@ pip install -e ".[dev]"
 cp .env.example .env   # 依需求填入金鑰(見下)
 ```
 
+### 每次使用前:啟用虛擬環境(activate)
+
+`buyer-intel` 指令裝在專案的虛擬環境(`.venv`,隱藏資料夾)裡,
+**每次開新的終端機視窗都要先啟用**,否則會出現 `command not found: buyer-intel`:
+
+```bash
+cd ~/ankomn/buyer-intelligence
+source .venv/bin/activate      # 啟用後提示字元會出現 (buyer-intelligence) 前綴
+buyer-intel serve              # 之後指令直接打即可
+```
+
+- 離開:`deactivate`(或直接關閉終端機視窗)
+- **不想每次啟用**的替代寫法:用完整路徑直接執行
+  `.venv/bin/buyer-intel serve`(效果相同)
+- 注意:指令要在**專案根目錄**跑(`~/ankomn/buyer-intelligence`),
+  不要進到 `src/` 裡面
+
 **LLM 後端二選一**(`LLM_BACKEND` 環境變數,見 `llm.py`):
 
 | 後端 | 計費 | 需求 | 取捨 |

@@ -18,12 +18,30 @@ load_dotenv()
 # claude_code(預設):透過 Claude Code CLI 呼叫,走訂閱額度,免 API key/儲值
 # api:Anthropic SDK 直連,需組織有 API 額度,品質與速度最佳
 LLM_BACKEND = os.getenv("LLM_BACKEND", "claude_code")
-# claude 執行檔:環境變數 > PATH > ~/.local/bin/claude(常見安裝位置)
-CLAUDE_CLI = (
-    os.getenv("CLAUDE_CLI")
-    or shutil.which("claude")
-    or str(Path.home() / ".local" / "bin" / "claude")
-)
+def _find_claude_cli() -> str:
+    """解析 claude 執行檔,逐一驗證真的存在(斷掉的符號連結視同不存在)。
+
+    順序:環境變數(不驗證,尊重使用者)→ PATH → 獨立版安裝位置
+    → VSCode 擴充內建(擴充更新會換資料夾,取修改時間最新者)。
+    """
+    env = os.getenv("CLAUDE_CLI")
+    if env:
+        return env
+    which = shutil.which("claude")
+    if which and Path(which).exists():   # exists() 會解析符號連結
+        return which
+    local = Path.home() / ".local" / "bin" / "claude"
+    if local.exists():
+        return str(local)
+    candidates = list(Path.home().glob(
+        ".vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude"
+    ))
+    if candidates:
+        return str(max(candidates, key=lambda p: p.stat().st_mtime))
+    return "claude"  # 找不到:留給執行時報明確錯誤(含修復指引)
+
+
+CLAUDE_CLI = _find_claude_cli()
 
 # ── 模型分工 ──
 MODEL_FAST = "claude-haiku-4-5"   # 清洗、抽取、OCR 後結構化
