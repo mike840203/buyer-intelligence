@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ankomn 北美市場拓展最終計劃書 — TIHS 2027 芝加哥</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700;900&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F7F6F2; --ink:#22261F; --pine:#1F5A46; --pine-deep:#143D30;
+  --brass:#B98A3C; --muted:#7C8178; --line:#DDDACF; --card:#FFFFFF;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--paper);color:var(--ink);line-height:1.75;font-weight:400;}
+.wrap{max-width:960px;margin:0 auto;padding:0 28px;}
+header{background:var(--pine-deep);color:#F2F0E8;padding:72px 0 56px;}
+.eyebrow{font-size:13px;letter-spacing:.35em;color:var(--brass);font-weight:500;margin-bottom:20px;}
+h1{font-family:'Noto Serif TC',serif;font-weight:900;font-size:clamp(30px,5vw,46px);line-height:1.3;margin-bottom:18px;}
+.sub{font-size:16px;color:#C9CFC5;max-width:680px;font-weight:300;}
+.meta-row{display:flex;gap:36px;margin-top:40px;flex-wrap:wrap;border-top:1px solid rgba(242,240,232,.2);padding-top:24px;}
+.meta-row div span{display:block;font-size:12px;letter-spacing:.15em;color:#9AA69C;margin-bottom:4px;}
+.meta-row div b{font-size:15px;font-weight:500;color:#F2F0E8;}
+nav{position:sticky;top:0;background:rgba(247,246,242,.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:50;}
+nav .wrap{display:flex;gap:4px;overflow-x:auto;padding:0 20px;}
+nav a{padding:14px 12px;font-size:13px;color:var(--muted);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent;font-weight:500;}
+nav a:hover{color:var(--pine);}
+section{padding:60px 0 8px;}
+.sec-label{display:flex;align-items:baseline;gap:14px;margin-bottom:26px;}
+.sec-label .no{font-family:'Noto Serif TC',serif;font-size:15px;color:var(--brass);font-weight:700;letter-spacing:.1em;}
+h2{font-family:'Noto Serif TC',serif;font-size:27px;font-weight:700;color:var(--pine-deep);}
+h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink);}
+p{margin-bottom:14px;font-size:15.5px;}
+.lead{font-size:17px;font-weight:300;color:#3C4038;}
+strong{font-weight:700;color:var(--pine-deep);}
+.summary{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brass);padding:28px 30px;margin:8px 0 12px;}
+.summary p:last-child{margin-bottom:0;}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:24px 0;}
+.stats div{background:var(--card);padding:22px 20px;}
+.stats b{display:block;font-family:'Noto Serif TC',serif;font-size:24px;color:var(--pine);font-weight:700;margin-bottom:4px;}
+.stats span{font-size:13px;color:var(--muted);}
+.tier{display:grid;grid-template-columns:110px 1fr;border:1px solid var(--line);background:var(--card);margin-bottom:14px;overflow:hidden;}
+.tier .badge{background:var(--pine-deep);color:#F2F0E8;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:20px 10px;}
+.tier .badge em{font-family:'Noto Serif TC',serif;font-style:normal;font-size:22px;font-weight:900;}
+.tier .badge i{font-style:normal;font-size:11px;letter-spacing:.15em;margin-top:2px;color:var(--brass);}
+.tier.t1 .badge{background:var(--pine);}
+.tier.t2 .badge{background:#3F6E5C;}
+.tier.t3 .badge{background:#6E8578;}
+.tier.t0 .badge{background:var(--brass);color:#2A1F0E;}
+.tier.t0 .badge i{color:#5C4416;}
+.tier .body{padding:20px 24px;}
+.tier .body h4{font-size:16px;font-weight:700;margin-bottom:6px;}
+.tier .body p{font-size:14.5px;margin-bottom:8px;color:#3C4038;}
+.tier .body .tag{display:inline-block;font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:3px;padding:2px 9px;margin:2px 4px 2px 0;color:var(--muted);}
+.tier .body .verdict{font-size:13.5px;color:var(--pine);font-weight:700;margin-top:6px;}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);margin:20px 0;font-size:14px;}
+th{background:var(--pine-deep);color:#F2F0E8;text-align:left;padding:11px 14px;font-weight:500;font-size:13px;letter-spacing:.05em;}
+td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top;}
+tr:nth-child(even) td{background:#FBFAF7;}
+.timeline{border-left:2px solid var(--pine);margin:28px 0 28px 8px;}
+.tl-item{position:relative;padding:0 0 28px 32px;}
+.tl-item::before{content:'';position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--paper);border:3px solid var(--pine);}
+.tl-item.now::before{background:var(--brass);border-color:var(--brass);}
+.tl-item .when{font-size:12.5px;letter-spacing:.12em;color:var(--brass);font-weight:700;margin-bottom:4px;}
+.tl-item h4{font-size:16px;font-weight:700;margin-bottom:6px;}
+.tl-item p{font-size:14.5px;color:#3C4038;margin-bottom:4px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;}
+@media(max-width:720px){.grid2{grid-template-columns:1fr;}.tier{grid-template-columns:80px 1fr;}}
+.kcard{background:var(--card);border:1px solid var(--line);padding:22px 24px;}
+.kcard h4{font-size:15px;font-weight:700;color:var(--pine-deep);margin-bottom:8px;}
+.kcard p{font-size:14px;color:#3C4038;margin-bottom:0;}
+.kcard .kv{font-family:'Noto Serif TC',serif;font-size:24px;font-weight:700;color:var(--pine);}
+.risk{background:var(--card);border:1px solid var(--line);margin-bottom:12px;padding:18px 22px;display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;}
+.risk .lv{font-size:11.5px;font-weight:700;letter-spacing:.1em;padding:3px 10px;border-radius:3px;margin-top:3px;white-space:nowrap;}
+.lv.high{background:#F3E2DB;color:#8A3B22;}
+.lv.mid{background:#F1EAD6;color:#7A5C18;}
+.lv.low{background:#E2EDE4;color:#2E5C3E;}
+.risk h4{font-size:15px;font-weight:700;margin-bottom:4px;}
+.risk p{font-size:14px;margin-bottom:0;color:#3C4038;}
+.assume{background:#FDF6E8;border:1px dashed var(--brass);padding:3px 8px;border-radius:3px;font-size:12.5px;color:#7A5C18;white-space:nowrap;}
+.ask{background:var(--pine-deep);color:#F2F0E8;padding:26px 30px;margin:16px 0;}
+.ask h4{color:var(--brass);font-size:15px;letter-spacing:.1em;margin-bottom:10px;}
+.ask p{color:#DCE3DA;font-size:15px;margin-bottom:8px;}
+.done{color:#2E7D4F;font-weight:700;}
+.note{font-size:13px;color:var(--muted);margin-top:6px;}
+footer{margin-top:72px;padding:32px 0 48px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">ANKOMN — NORTH AMERICA MARKET ENTRY · FINAL PLAN</div>
+    <h1>北美市場拓展最終計劃書<br>The Inspired Home Show 2027・芝加哥</h1>
+    <p class="sub">本文件為提交管理層簽核之最終版本:含完整通路戰略、名單數學驗算、預算與單位經濟、定價治理、風險對策與明確決策請求。標註<span class="assume">假設</span>之數字待報價或財務確認,其餘均為已驗證事實。</p>
+    <div class="meta-row">
+      <div><span>展會</span><b>The Inspired Home Show 2027</b></div>
+      <div><span>展期</span><b>2027 年 3 月 9–11 日</b></div>
+      <div><span>地點</span><b>McCormick Place, Chicago</b></div>
+      <div><span>版本</span><b>Final v2 · 2026 年 7 月</b></div>
+    </div>
+  </div>
+</header>
+
+<nav><div class="wrap">
+  <a href="#s1">摘要</a>
+  <a href="#s2">市場與產品</a>
+  <a href="#s3">通路戰略</a>
+  <a href="#s4">目標地區</a>
+  <a href="#s5">名單數學</a>
+  <a href="#s6">預算與單位經濟</a>
+  <a href="#s7">定價治理</a>
+  <a href="#s8">時間軸</a>
+  <a href="#s9">KPI</a>
+  <a href="#s10">風險</a>
+  <a href="#s11">決策請求</a>
+  <a href="#s12">附錄:驗算</a>
+</div></nav>
+
+<main class="wrap">
+
+<!-- 1 執行摘要 -->
+<section id="s1">
+  <div class="sec-label"><span class="no">壹</span><h2>執行摘要</h2></div>
+  <div class="summary">
+    <p class="lead">本計劃以 2027 年 3 月芝加哥 The Inspired Home Show(北美最大家居用品展,10,000+ 零售買家)為支點,用 <strong>US$20,000–35,000</strong> 的總投資,在 12 個月內為 Ankomn 建立美國零售通路的灘頭堡:<strong>展前敲定 15–20 場買家會議、展後 90 天內取得 3–5 家首批訂單、簽下 2–3 個區域銷售代表</strong>。</p>
+    <p>戰略主軸三條:<strong>(1)主攻精品咖啡通路</strong>——咖啡豆保鮮是剛需,buyer 決策快,是建立美國市場實績最快的路徑;<strong>(2)優先簽下獨立銷售代表(Rep Group)</strong>——美國家居用品業中小品牌進零售的實質通道;<strong>(3)展前六個月系統化名單開發</strong>——展會成敗七成決定在展前。</p>
+    <p><strong>與初版計劃的差異:</strong>支撐本計劃的 AI 買家情報系統(Buyer Intelligence System)<span class="done">已於 2026 年 7 月開發完成並上線</span>,首批 18 家名單已完成匯入與評分驗證,評分模型與戰略地區優先序吻合。系統營運成本壓至趨近零(LLM 走既有訂閱額度)。本版本並補齊初版缺漏的名單數學、預算、單位經濟與定價治理。</p>
+  </div>
+  <div class="stats">
+    <div><b>15–20 場</b><span>展前預約買家會議</span></div>
+    <div><b>3–5 家</b><span>展後 90 天首批訂單</span></div>
+    <div><b>2–3 個</b><span>區域 Rep 簽約</span></div>
+    <div><b>$20–35K</b><span>總投資(USD)<span class="assume">假設</span></span></div>
+  </div>
+</section>
+
+<!-- 2 市場與產品 -->
+<section id="s2">
+  <div class="sec-label"><span class="no">貳</span><h2>市場定位與競品</h2></div>
+  <p class="lead">Ankomn 真空保鮮罐橫跨兩個高成長利基:<strong>精品咖啡器材</strong>(咖啡豆保鮮)與<strong>廚房收納保鮮</strong>。美國市場已被競品教育完成——我們不需要解釋「為什麼咖啡豆要真空保存」,只需要回答「為什麼選 Ankomn」。</p>
+  <table>
+    <thead><tr><th>競品</th><th>技術路線</th><th>美國零售價帶</th><th>Ankomn 的相對位置</th></tr></thead>
+    <tbody>
+      <tr><td>Fellow Atmos</td><td>電動/手壓抽真空罐</td><td>US$40 上下</td><td>Ankomn 手搖棘輪免電池免泵,單手操作,價位可切入其下方或平行帶</td></tr>
+      <tr><td>Planetary Design Airscape</td><td>單向閥壓排空氣(非真空)</td><td>US$25–35</td><td>Ankomn 為真真空,保鮮效果有實測差異,可打「upgrade」敘事</td></tr>
+      <tr><td>OXO POP 等收納罐</td><td>密封(非真空)</td><td>US$15–30</td><td>廚房收納場景的升級選項(T2 通路敘事)</td></tr>
+    </tbody>
+  </table>
+  <p><strong>核心銷售敘事(對 buyer):</strong>「貴店已在賣 Atmos / Airscape,證明品類有貨架——Ankomn 是同一貨架上<strong>不同價位帶的機械真空選項</strong>,不增加電池/泵浦類 SKU 的售後負擔,台灣設計製造+專利棘輪結構。」此敘事已在系統產出的開發信中實測通過嚴格審稿。</p>
+  <p class="note">假設零售價帶 MSRP US$25–45 <span class="assume">假設,待產品線定價確認</span>;競品價格為 2026 年中觀察值,展前需更新。</p>
+</section>
+
+<!-- 3 通路戰略 -->
+<section id="s3">
+  <div class="sec-label"><span class="no">參</span><h2>通路分層戰略與交戰規則</h2></div>
+  <p class="lead">買家不是同一群人。依決策速度、訂單規模與進入門檻分四層,<strong>資源順序:T0 與 T1 優先,T2 展會現場捕捉,T3 第一年禁止主動進攻</strong>(此規則已寫入系統防線,違反戰略的觸達會被自動攔截)。</p>
+
+  <div class="tier t0">
+    <div class="badge"><em>T0</em><i>優先建立</i></div>
+    <div class="body">
+      <h4>獨立銷售代表(Rep Group)與經銷商</h4>
+      <p>美國家居用品業的實質規則:中小品牌透過區域型 Rep 打進零售。Rep 抽佣 5–15%,握有 buyer 長期信任;經銷商解決進口、倉儲、物流,適合尚無美國倉的階段。<strong>交戰方式:</strong>IHA 展商名錄鎖定 + 展中主動接觸;信件以「代理合作機會」而非批發採購切入(系統已針對 T0 使用獨立信件模板)。</p>
+      <span class="tag">佣金制,低前期成本</span><span class="tag">合約需設 6–12 個月績效退場條款</span>
+      <p class="verdict">▸ 目標:展後 60 天內簽 2–3 個區域 Rep,覆蓋 P1 地區。</p>
+    </div>
+  </div>
+  <div class="tier t1">
+    <div class="badge"><em>T1</em><i>主攻</i></div>
+    <div class="body">
+      <h4>精品咖啡通路(灘頭堡)</h4>
+      <p>咖啡器材電商(Prima Coffee、Seattle Coffee Gear、Clive Coffee、Whole Latte Love)、精品烘豆商連鎖與獨立咖啡器材店。決策鏈短、起訂量務實、已賣競品者品類驗證完成。<strong>交戰方式:</strong>Apollo 名單 + 個人化開發信 + 展前視訊/展中會議;小店直接找 Owner,中大型找品類 Buyer(系統依職稱自動選人)。</p>
+      <span class="tag">決策快</span><span class="tag">高毛利利基</span><span class="tag">第一批 PO 來源</span>
+      <p class="verdict">▸ 目標:首批 3–5 家 PO 全部來自此層。</p>
+    </div>
+  </div>
+  <div class="tier t2">
+    <div class="badge"><em>T2</em><i>中期</i></div>
+    <div class="body">
+      <h4>廚房專賣零售</h4>
+      <p>Sur La Table、Williams Sonoma、Crate &amp; Barrel、The Container Store。品類採購每年親自走 TIHS——展會是唯一面對面機會。決策週期 6–18 個月。<strong>交戰方式:</strong>不指望現場成交,目標是進入其新品評估流程(vendor onboarding);報價一律 DDP 並附美國履約方案。</p>
+      <span class="tag">品牌位階拉升</span><span class="tag">決策週期長</span>
+      <p class="verdict">▸ 目標:2 家進入評估流程。</p>
+    </div>
+  </div>
+  <div class="tier t3">
+    <div class="badge"><em>T3</em><i>禁止主攻</i></div>
+    <div class="body">
+      <h4>大型量販與電商平台</h4>
+      <p>Target、Costco、Amazon Vendor Central、TJX 系。量大、壓價深、帳期長、附 chargebacks 罰則,且需 Rep 或經銷商進場。供應鏈與現金流未備妥前接單是風險而非機會。<strong>交戰規則(硬性):</strong>系統對 T3 名單自動歸檔、不發信;若對方展中主動接觸,收名片、記需求、交由簽約 Rep 評估——我方不直接談。</p>
+      <span class="tag">高風險高門檻</span><span class="tag">系統自動攔截已實裝</span>
+      <p class="verdict">▸ 第一年 KPI:零主動觸達(此為紀律指標,不是產出指標)。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 目標地區 -->
+<section id="s4">
+  <div class="sec-label"><span class="no">肆</span><h2>目標地區優先序</h2></div>
+  <table>
+    <thead><tr><th>優先序</th><th>地區</th><th>核心城市</th><th>戰略理由</th><th>名單配比</th></tr></thead>
+    <tbody>
+      <tr><td>P1</td><td>太平洋西北</td><td>西雅圖、波特蘭</td><td>美國精品咖啡首都;Tier 1 通路密度全美最高,器材電商多設籍於此</td><td>30%</td></tr>
+      <tr><td>P1</td><td>德州</td><td>Austin、Houston、Dallas</td><td>全美成長最快咖啡市場之一;團隊駐地主場,可親自跑店</td><td>30%</td></tr>
+      <tr><td>P2</td><td>加州</td><td>灣區、洛杉磯</td><td>消費力強;亞裔市場對台灣品牌信任門檻低</td><td>15%</td></tr>
+      <tr><td>P2</td><td>紐約都會區</td><td>NYC</td><td>高單價廚房用品指標市場,T2 買家與媒體集中</td><td>15%</td></tr>
+      <tr><td>P3</td><td>中西部</td><td>芝加哥</td><td>展會主場;展後順路實地拜訪,行程零邊際成本</td><td>10%</td></tr>
+    </tbody>
+  </table>
+  <p class="note">系統評分模型已依此優先序配置地區權重(P1=100、P2=80、P3=60 分),首批名單實測:P1 公司全數獲 A 級,與設計一致。</p>
+</section>
+
+<!-- 5 名單數學 -->
+<section id="s5">
+  <div class="sec-label"><span class="no">伍</span><h2>名單數學:KPI 反推(初版缺漏,本版補齊)</h2></div>
+  <p class="lead">「展前 15–20 場會議」不是願望,是漏斗輸出。以下由 KPI 反推每週名單開發量,證明目標可達成:</p>
+  <table>
+    <thead><tr><th>漏斗層</th><th>轉化率(區間)</th><th>中值推算</th><th>依據</th></tr></thead>
+    <tbody>
+      <tr><td>目標:展前會議</td><td>—</td><td><strong>18 場</strong>(15–20)</td><td>KPI</td></tr>
+      <tr><td>A 級名單 → 會議</td><td>2–5%</td><td>3% → 需 <strong>600 筆 A 級</strong>(400–900)</td><td>B2B 冷開發信業界基準:開信 40–60% × 回覆 5–10% × 回覆轉會議 40–50% ≈ 2–4%<span class="assume">假設</span></td></tr>
+      <tr><td>總名單 → A 級佔比</td><td>35–50%</td><td>40% → 需 <strong>1,500 筆總名單</strong>(1,000–2,000)</td><td>首批 18 筆樣本 A 級偏高(小樣本),保守取 40%</td></tr>
+      <tr><td>名單開發期產能</td><td>—</td><td>2026-09-01 ~ 12-31 共 17 週 → <strong>每週約 90 筆</strong></td><td>Apollo 每週 1 次匯出(~100 筆/批)+ Places 城市掃描,實測單批 25 筆流程順跑</td></tr>
+      <tr><td>人工覆核負載</td><td>—</td><td>600 封 A 級信 × 1 分鐘 ≈ <strong>10 小時 / 4 個月</strong></td><td>系統產草稿並經 AI 審稿,人工只做最終把關,實測單封 &lt;1 分鐘</td></tr>
+    </tbody>
+  </table>
+  <p><strong>結論:每週 90 筆名單 + 每天 10 分鐘覆核,即可支撐 KPI。</strong>此產能單人可負擔;若第 8 週檢核落後軌道,升級 Apollo 方案將名單產能翻倍(見預算)。</p>
+</section>
+
+<!-- 6 預算與單位經濟 -->
+<section id="s6">
+  <div class="sec-label"><span class="no">陸</span><h2>預算與單位經濟(初版缺漏,本版補齊)</h2></div>
+  <h3>6.1 投資預算</h3>
+  <table>
+    <thead><tr><th>項目</th><th>金額(USD)</th><th>備註</th></tr></thead>
+    <tbody>
+      <tr><td>TIHS 攤位(10'×10',Clean + Contain 分區)</td><td>4,000–8,000 <span class="assume">待 IHA 報價</span></td><td>含轉角/位置加價空間</td></tr>
+      <tr><td>攤位裝潢、展示架、視覺輸出</td><td>3,000–6,000 <span class="assume">假設</span></td><td>自組裝方案壓低成本</td></tr>
+      <tr><td>樣品、展品與海運(提前 8 週出貨)</td><td>2,000–4,000 <span class="assume">假設</span></td><td>含展中發送樣品</td></tr>
+      <tr><td>差旅 ×2 人(機票、住宿 7 晚、當地交通)</td><td>6,000–9,000 <span class="assume">假設</span></td><td>含展後芝加哥/中西部拜訪 2 日</td></tr>
+      <tr><td>IHA 會員 + gia 獎項報名</td><td>1,000–2,000 <span class="assume">待查</span></td><td>gia 為零成本高回報曝光槓桿</td></tr>
+      <tr><td>寄信基礎設施 + 工具訂閱 6 個月</td><td>800–1,500</td><td>專用寄信網域、信箱、Apollo Basic($49–59/月)、Hunter</td></tr>
+      <tr><td>買家情報系統 LLM 成本</td><td><strong>0</strong></td><td class="done">已上線;走既有訂閱額度</td></tr>
+      <tr><td>預備金(約 10%)</td><td>1,700–3,000</td><td></td></tr>
+      <tr><td><strong>總計</strong></td><td><strong>18,500–33,500</strong></td><td>簽核口徑取 <strong>US$20,000–35,000</strong></td></tr>
+    </tbody>
+  </table>
+  <h3>6.2 單位經濟(框架 + 假設,待財務填值)</h3>
+  <table>
+    <thead><tr><th>項目</th><th>假設值</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td>零售價 MSRP</td><td>US$25–45 <span class="assume">假設</span></td><td>對標 Airscape–Atmos 之間價帶</td></tr>
+      <tr><td>批發價</td><td>50% MSRP(keystone)</td><td>美國家居零售慣例;T1 電商可談 50–55%</td></tr>
+      <tr><td>Rep 佣金</td><td>批發額 10%(5–15%)</td><td>僅 Rep 引入之訂單支付</td></tr>
+      <tr><td>到岸成本(FOB+運+關稅)</td><td>30–40% MSRP <span class="assume">待財務確認,關稅敏感</span></td><td>DDP 報價需內含;關稅假設須逐季更新</td></tr>
+      <tr><td>批發毛利</td><td>每件約 10–20% MSRP <span class="assume">推算</span></td><td>= 批發價 − 到岸成本 − 佣金</td></tr>
+      <tr><td>典型首單(T1 電商)</td><td>US$2,000–3,000 / 家 <span class="assume">假設</span></td><td>約 100–200 件試單</td></tr>
+    </tbody>
+  </table>
+  <h3>6.3 投資回收的誠實說法</h3>
+  <p>首批 3–5 家 PO(約 US$6,000–15,000 營收)<strong>不會直接回收展會投資</strong>——第一年買的是通路資產:Rep 網絡、首批 reference 客戶、T2 評估流程門票。回收機制是<strong>補貨循環 + Rep 帶量 + T2 上架</strong>:以 24 個月累計通路營收 US$150,000–300,000 為回收目標<span class="assume">目標值,請管理層核定</span>,對應投資約在第 15–24 個月損益兩平。若 12 個月後補貨率與 Rep 產出低於軌道,應果斷縮減第二年展會投入——本計劃內建此停損檢核點(見時間軸)。</p>
+</section>
+
+<!-- 7 定價治理 -->
+<section id="s7">
+  <div class="sec-label"><span class="no">柒</span><h2>定價與通路治理(初版缺漏,本版補齊)</h2></div>
+  <p class="lead">多通路併行(T1 電商、未來 T2 零售、自有 DTC/Amazon)最大的隱形炸彈是<strong>亂價</strong>。零售商最怕上架後被自家供應商的 Amazon 頁面用低價打臉——治理規則必須在第一張報價單發出前定案:</p>
+  <table>
+    <thead><tr><th>政策</th><th>內容</th><th>目的</th></tr></thead>
+    <tbody>
+      <tr><td><strong>MAP(最低廣告價格)政策</strong></td><td>制定書面 MAP,所有批發客戶簽署;自有 Amazon/DTC 售價不低於 MAP</td><td>保護零售夥伴毛利,是 T2 願意上架的前提</td></tr>
+      <tr><td><strong>FOB / DDP 雙報價</strong></td><td>每張報價單同列兩版,DDP 註明關稅假設與有效期</td><td>對沖關稅波動;大小客戶各取所需</td></tr>
+      <tr><td><strong>通路衝突規則</strong></td><td>Rep 區域獨家以「零售通路」為限,不含我方 DTC;T1 電商不給地域獨家</td><td>避免簽約鎖死線上成長</td></tr>
+      <tr><td><strong>展會特惠</strong></td><td>展中下單免首單運費或 3–5% 折讓(擇一),效期至 3/31</td><td>製造現場成交誘因,不破壞價格結構</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 8 時間軸 -->
+<section id="s8">
+  <div class="sec-label"><span class="no">捌</span><h2>執行時間軸(由展期倒推,含現況)</h2></div>
+  <div class="timeline">
+    <div class="tl-item now">
+      <div class="when">2026 年 7 月 — 現在</div>
+      <h4>基礎建設期 <span class="done">系統部分已提前完成</span></h4>
+      <p><span class="done">✔ 買家情報系統上線</span>(名單→評分→信件→追蹤全流程,17 項自動化測試)。<span class="done">✔ 首批 18 家名單完成匯入與評分驗證。</span></p>
+      <p>待辦:確認攤位(Clean + Contain)、註冊 IHA 會員、<strong>查明 gia 獎項報名截止日</strong>(通常展前 4–5 個月,勿錯過)、財務確認單位經濟假設值。</p>
+    </div>
+    <div class="tl-item">
+      <div class="when">2026 年 8 月</div>
+      <h4>寄信基礎設施(關鍵路徑,不可壓縮)</h4>
+      <p>購買專用寄信網域(勿用主網域)→ 設定 SPF/DKIM/DMARC → <strong>網域暖機 4–6 週</strong>。此步驟決定信件進收件匣還是垃圾桶,是整個展前 outreach 的先決條件。同步:MAP 政策與雙版報價單定稿。</p>
+    </div>
+    <div class="tl-item">
+      <div class="when">2026 年 9–12 月(17 週)</div>
+      <h4>名單開發期</h4>
+      <p>每週 90 筆名單入系統(Apollo 匯出 + Places 掃描 + IHA 名錄);系統自動豐富、評分、產信;每天 10 分鐘人工覆核寄出。<strong>每兩週檢核:</strong>累計 A 級數對 600 目標的軌道;第 8 週落後 15% 即升級 Apollo 方案。</p>
+    </div>
+    <div class="tl-item">
+      <div class="when">2026 年 12 月 – 2027 年 2 月</div>
+      <h4>觸達預約期</h4>
+      <p>Outreach 全速運轉,目標展前敲定 15–20 場攤位會議;Rep 候選清單完成背景查核;預約展後芝加哥實地拜訪。2 月:會議行程定稿、樣品物流抵達、攤位話術演練、展中系統(名片掃描+即時簡報)實機演練。</p>
+    </div>
+    <div class="tl-item">
+      <div class="when">2027 年 3 月 9–11 日</div>
+      <h4>作戰期</h4>
+      <p>白天:預約會議 + 現場捕捉(合格接觸目標 80–120 筆,名片即掃即建檔)。<strong>每晚:系統批次生成當日跟進信,人工掃過後寄出——24 小時跟進率 100%</strong>(當日跟進轉化率是一週後的數倍)。</p>
+    </div>
+    <div class="tl-item">
+      <div class="when">2027 年 3–5 月</div>
+      <h4>轉化收割期</h4>
+      <p>熱名單寄樣+報價、溫名單排視訊、Rep 進入條款談判(60 天內簽 2–3 家);Tier 2 evaluated onboarding 跟進。5 月底:對照 KPI 全面覆盤。</p>
+    </div>
+    <div class="tl-item">
+      <div class="when">2027 年 Q3(停損檢核點)</div>
+      <h4>續投決策</h4>
+      <p>檢核補貨率、Rep 產出、T2 進度;達標 → 規劃 TIHS 2028 擴大參展;未達標 → 縮減為 Rep 維運模式,不再投入第二年攤位。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 9 KPI -->
+<section id="s9">
+  <div class="sec-label"><span class="no">玖</span><h2>KPI 與追蹤機制</h2></div>
+  <div class="grid2">
+    <div class="kcard"><h4>展前預約會議</h4><p class="kv">15–20 場</p><p>展前 outreach 核心成敗指標;每兩週對軌道檢核</p></div>
+    <div class="kcard"><h4>A 級名單庫存</h4><p class="kv">600 筆</p><p>新增指標(本版):會議數的先行指標,落後即加大名單量</p></div>
+    <div class="kcard"><h4>合格名單(展中)</h4><p class="kv">80–120 筆</p><p>三天展期完成系統建檔與分級的接觸紀錄</p></div>
+    <div class="kcard"><h4>24 小時跟進率</h4><p class="kv">100%</p><p>展中所有接觸 24 小時內收到個人化跟進;系統保證產能,人保證按下寄出</p></div>
+    <div class="kcard"><h4>Rep 簽約</h4><p class="kv">2–3 個</p><p>展後 60 天內,覆蓋 P1 地區,合約含績效退場條款</p></div>
+    <div class="kcard"><h4>首批訂單</h4><p class="kv">3–5 家</p><p>展後 90 天內,來自 T1 咖啡通路</p></div>
+    <div class="kcard"><h4>T2 評估流程</h4><p class="kv">2 家</p><p>進入大型廚房零售 vendor onboarding</p></div>
+    <div class="kcard"><h4>T3 主動觸達</h4><p class="kv">0 次</p><p>紀律指標:系統自動攔截,違反即檢討</p></div>
+  </div>
+  <p><strong>追蹤機制:</strong>系統提供完整 Web 管理介面——所有 KPI 於儀表板即時呈現(漏斗視圖 + 逾期未跟進紅色警示);每筆商機的階段推進(回信/會議/樣品/報價/PO)在網頁上一鍵記錄。管理層隨時開啟瀏覽器即可檢視真實戰況,不依賴口頭匯報。</p>
+</section>
+
+<!-- 10 風險 -->
+<section id="s10">
+  <div class="sec-label"><span class="no">拾</span><h2>風險評估與對策</h2></div>
+  <div class="risk"><span class="lv high">高</span><div><h4>寄信到達率(本版新增——最大實務風險)</h4><p>冷開發信若進垃圾桶,全戰略歸零。對策:專用寄信網域 + SPF/DKIM/DMARC + 4–6 週暖機排入 8 月關鍵路徑;所有 email 經驗證後才寄;每週監控退信率,超過 2% 立即暫停檢討;信件內容 100% 個人化(系統以 AI 審稿把關)並符合 CAN-SPAM(實體地址+退訂)。</p></div></div>
+  <div class="risk"><span class="lv high">高</span><div><h4>關稅與貿易政策變動</h4><p>直接衝擊 DDP 報價與毛利。對策:FOB/DDP 雙報價並註明關稅假設與效期;單位經濟表逐季更新;評估經銷商承擔進口方案;IHA 會員關稅資源優先研讀。</p></div></div>
+  <div class="risk"><span class="lv high">高</span><div><h4>無美國倉/履約能力</h4><p>T2 以上買家要求本地出貨短交期。對策:第一年以經銷商倉儲或 3PL 應對;此為經銷商談判核心議題;T2 報價一律附履約方案。</p></div></div>
+  <div class="risk"><span class="lv mid">中</span><div><h4>名單量不足(本版新增)</h4><p>每週 90 筆若中斷,會議 KPI 連鎖失守。對策:每兩週軌道檢核;落後 15% 即升級 Apollo 方案(+$50/月換產能翻倍);Places 城市掃描為第二來源。</p></div></div>
+  <div class="risk"><span class="lv mid">中</span><div><h4>展前預約不足,淪為被動等客</h4><p>對策:outreach 於 12 月啟動(名單先行 3 個月);預約進度每兩週檢視;低於軌道即加大 A 級觸達量並開放 B 級批次觸達。</p></div></div>
+  <div class="risk"><span class="lv mid">中</span><div><h4>Rep 選擇錯誤,鎖死區域通路</h4><p>對策:合約設 6–12 個月績效退場條款;區域獨家以零售通路為限;簽約前向其現有品牌客戶背景查核。</p></div></div>
+  <div class="risk"><span class="lv low">低</span><div><h4>仿品與智財</h4><p>對策:美國專利與商標布局展前完備;gia 獎項與「台灣設計製造」敘事強化正品識別。</p></div></div>
+</section>
+
+<!-- 11 決策請求 -->
+<section id="s11">
+  <div class="sec-label"><span class="no">拾壹</span><h2>提請管理層決策事項</h2></div>
+  <div class="ask">
+    <h4>DECISION REQUESTS</h4>
+    <p><strong>1. 核准總預算 US$20,000–35,000</strong>(細項見第陸章;攤位報價到位後收斂為單一數字二次確認)。</p>
+    <p><strong>2. 核定單位經濟假設值</strong>:MSRP、到岸成本、24 個月營收回收目標(第陸章標註「假設」各項),8 月 15 日前定案以趕上報價單定稿。</p>
+    <p><strong>3. 核准 MAP 政策原則</strong>(第柒章),含自有 Amazon/DTC 不低於 MAP 之承諾。</p>
+    <p><strong>4. 授權立即執行三件長前置事項</strong>:TIHS 攤位申請、gia 獎項報名(截止日臨近)、寄信網域採購與暖機。</p>
+  </div>
+</section>
+
+<!-- 12 附錄 -->
+<section id="s12">
+  <div class="sec-label"><span class="no">附</span><h2>附錄:數字一致性驗算</h2></div>
+  <table>
+    <thead><tr><th>#</th><th>驗算</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>會議 KPI ↔ 名單量:18 場 ÷ 3% = 600 A 級;600 ÷ 40% = 1,500 總名單;1,500 ÷ 17 週 = 88/週 ≈ 90</td><td>✔ 一致</td></tr>
+      <tr><td>2</td><td>名單產能 ↔ 工具:Apollo 單次匯出約 100 筆(週一次)+ Places 掃描,90/週可達</td><td>✔ 可行(已實測單批流程)</td></tr>
+      <tr><td>3</td><td>覆核人力 ↔ 產能:600 封 × 1 分鐘 = 10 小時,分攤 17 週 = 每週 35 分鐘</td><td>✔ 單人可負擔</td></tr>
+      <tr><td>4</td><td>時間軸 ↔ 暖機:8 月啟動暖機 4–6 週 → 9 月中可小量寄信 → 12 月全速,無衝突</td><td>✔ 一致</td></tr>
+      <tr><td>5</td><td>預算 ↔ 工具訂閱:Apollo $59×6=$354 + Hunter $49×4=$196 + 網域/信箱 ≈ $100–250 → 合計 ≈ $650–800,低於編列上限 $1,500(餘裕留給追加工具)</td><td>✔ 預算充足</td></tr>
+      <tr><td>6</td><td>首單營收 ↔ 誠實性:3–5 家 × $2,000–3,000 = $6,000–15,000 &lt; 投資額 $20–35K → 明示第一年不回本,回收依 24 個月通路營收(第陸章 6.3 同數字)</td><td>✔ 無誇大、前後一致</td></tr>
+    </tbody>
+  </table>
+  <p class="note">本計劃書配套技術文件:《Buyer Intelligence System 完整系統規格書 v2》。系統原始碼、測試與操作日誌均在內部 repo 可查。</p>
+</section>
+
+<footer>
+  <div>Ankomn 北美市場拓展最終計劃書 · Final v2 · 2026 年 7 月 · 內部文件,提交管理層簽核用</div>
+</footer>
+
+</main>
+</body>
+</html>
