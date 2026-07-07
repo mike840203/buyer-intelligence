@@ -29,10 +29,43 @@ STATE_TO_REGION: dict[str, Region] = {
 }
 
 
+# 州全名 → 縮寫(Apollo 匯出用全名如 "Illinois",Places 用縮寫 "IL";
+# 入庫一律正規化為縮寫,UI 顯示與篩選都用州名縮寫)
+_STATE_FULL_NAMES = {
+    "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR",
+    "CALIFORNIA": "CA", "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE",
+    "FLORIDA": "FL", "GEORGIA": "GA", "HAWAII": "HI", "IDAHO": "ID",
+    "ILLINOIS": "IL", "INDIANA": "IN", "IOWA": "IA", "KANSAS": "KS",
+    "KENTUCKY": "KY", "LOUISIANA": "LA", "MAINE": "ME", "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN",
+    "MISSISSIPPI": "MS", "MISSOURI": "MO", "MONTANA": "MT", "NEBRASKA": "NE",
+    "NEVADA": "NV", "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ",
+    "NEW MEXICO": "NM", "NEW YORK": "NY", "NORTH CAROLINA": "NC",
+    "NORTH DAKOTA": "ND", "OHIO": "OH", "OKLAHOMA": "OK", "OREGON": "OR",
+    "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI", "SOUTH CAROLINA": "SC",
+    "SOUTH DAKOTA": "SD", "TENNESSEE": "TN", "TEXAS": "TX", "UTAH": "UT",
+    "VERMONT": "VT", "VIRGINIA": "VA", "WASHINGTON": "WA",
+    "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY",
+    "DISTRICT OF COLUMBIA": "DC",
+}
+
+
+def normalize_state(state: str | None) -> str | None:
+    """州別正規化:全名轉縮寫、統一大寫;認不得的保留原值。"""
+    if not state or not state.strip():
+        return None
+    code = state.upper().strip()
+    if len(code) > 2:
+        code = _STATE_FULL_NAMES.get(code, state.strip())
+    return code
+
+
 def map_region(state: str | None) -> Region:
-    if not state:
+    """州 → 戰略地區(僅供評分權重使用;UI 一律顯示州名)。"""
+    code = normalize_state(state)
+    if not code:
         return "OTHER"
-    return STATE_TO_REGION.get(state.upper().strip(), "OTHER")
+    return STATE_TO_REGION.get(code, "OTHER")
 
 
 # 免費信箱網域:不能當「同公司」證據(兩家小店都用 gmail 不代表是同一家)
@@ -164,18 +197,14 @@ def to_lead(raw: RawLead) -> Lead:
         email=raw.email.lower().strip() if raw.email else None,
         website=raw.website,
         city=raw.city,
-        state=raw.state,
+        state=normalize_state(raw.state),
         tier=raw.tier,
         region=map_region(raw.state),
         source=raw.source,
         enrichment_notes=raw.notes,
         alt_contacts=raw.alt_contacts,
     )
-    if lead.email:
-        try:
-            lead.email_verified = verify_email(lead.email)
-        except httpx.HTTPError:
-            lead.email_verified = False
+    # email 驗證不在匯入時做(同步打 API 會讓匯入卡住),移到 pipeline L2 背景執行
     return lead
 
 
@@ -211,7 +240,16 @@ def extract_facts(summary: str) -> EnrichmentFacts:
 
 
 def enrich_lead(lead: Lead) -> Lead:
-    """L2 完整流程:背景豐富並回填 Lead。"""
+    """L2 完整流程:email 驗證 + 背景豐富,回填 Lead。
+
+    (驗證放這裡而非匯入時:pipeline 本來就是背景長工作,多 1 秒無感;
+    匯入則保持秒進不卡 UI)
+    """
+    if lead.email and not lead.email_verified:
+        try:
+            lead.email_verified = verify_email(lead.email)
+        except httpx.HTTPError:
+            lead.email_verified = False
     summary = research_company(lead)
     facts = extract_facts(summary)
     lead.store_count = facts.store_count

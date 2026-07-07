@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from typing import TypedDict
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -98,6 +99,11 @@ def route_by_quality(state: LeadState) -> str:
     return "revise"
 
 
+# 平行 worker 各自 build_graph:建構(含 checkpoint 建表/WAL 設定)必須序列化,
+# 否則多執行緒同時初始化 SQLite schema 會互撞 database is locked
+_build_lock = threading.Lock()
+
+
 def build_graph():
     graph = StateGraph(LeadState)
 
@@ -118,22 +124,39 @@ def build_graph():
     })
     graph.add_edge("review", END)
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    checkpointer = SqliteSaver(
-        sqlite3.connect(CHECKPOINT_PATH, check_same_thread=False)
-    )
-    return graph.compile(checkpointer=checkpointer)
+    with _build_lock:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        # timeout=30:寫入撞鎖時等待而非立刻報錯
+        conn = sqlite3.connect(CHECKPOINT_PATH, check_same_thread=False, timeout=30)
+        checkpointer = SqliteSaver(conn)
+        if hasattr(checkpointer, "setup"):
+            checkpointer.setup()  # 在鎖內完成建表,worker 之間不再競速
+        return graph.compile(checkpointer=checkpointer)
 
 
-def prepare_batch(limit: int | None = None) -> tuple[list[Lead], list[str]]:
+def prepare_batch(
+    limit: int | None = None,
+    state: str | None = None,
+    source: str | None = None,
+) -> tuple[list[Lead], list[str]]:
     """選出本批可跑的新名單:跳過待覆核者、T3 直接歸檔。回傳 (名單, 訊息)。
 
+    - state:只跑指定州(如 IL=芝加哥所在的伊利諾州),其餘留庫不動
+    - source:只跑指定來源(apollo / places / iha / manual / stockists…)
     CLI 與 Web UI 共用此入口,戰略防線只寫一份。
     """
     from .scoring import archive_t3
 
     messages: list[str] = []
     leads = db.list_leads(stage="new")
+    if state:
+        before = len(leads)
+        leads = [l for l in leads if (l.state or "").upper() == state.upper()]
+        messages.append(f"州篩選 {state.upper()}:{len(leads)} 筆(其餘 {before - len(leads)} 筆留庫)")
+    if source:
+        before = len(leads)
+        leads = [l for l in leads if l.source == source]
+        messages.append(f"來源篩選 {source}:{len(leads)} 筆(其餘 {before - len(leads)} 筆留庫)")
 
     pending = [l for l in leads if l.pending_draft]
     if pending:

@@ -36,6 +36,30 @@ TRACK_LABELS = {
     "replied": "📩 對方回信", "meeting": "📅 約到會議", "sample": "📦 樣品寄出",
     "quote": "💰 報價中", "po": "🎉 收到 PO", "dead": "🗑 歸檔",
 }
+# 資料來源顯示名稱(匯入時可自選標籤,pipeline 可依來源篩選)
+SOURCE_LABELS = {
+    "apollo": "Apollo", "places": "Google 地圖", "iha": "IHA 展場",
+    "linkedin": "LinkedIn", "stockists": "競品 Stockists",
+    "manual": "手動/CSV", "ocr": "展中名片",
+}
+
+
+def source_chip(source: str) -> str:
+    return f'<span class="chip">{e(SOURCE_LABELS.get(source, source))}</span>'
+
+
+def linkedin_check_link(name: str | None, company: str) -> str:
+    """LinkedIn 在職查核連結:寄信前 30 秒人工確認本人還在職、職稱沒變。
+
+    用 Google 搜尋(合規)而非爬蟲——自動化抓 LinkedIn 違反其條款且有封號風險。
+    """
+    from urllib.parse import quote_plus
+
+    if not name:
+        return ""
+    query = quote_plus(f'"{name}" "{company}" LinkedIn')
+    return (f'<a href="https://www.google.com/search?q={query}" target="_blank" '
+            f'rel="noopener">🔍 LinkedIn 在職查核</a>')
 
 _CSS = """
 :root{--paper:#F7F6F2;--ink:#22261F;--pine:#1F5A46;--deep:#143D30;--brass:#B98A3C;
@@ -126,15 +150,16 @@ def lead_row(lead: Lead) -> str:
     draft = " ✉️" if lead.pending_draft else ""
     return (f'<tr><td><a href="/leads/{lead.id}">{e(lead.company)}</a>{draft}</td>'
             f"<td>{contact}{title}</td>"
+            f'<td><span class="chip">{e(lead.state or "?")}</span></td>'
+            f"<td>{source_chip(lead.source)}</td>"
             f'<td><span class="chip">{e(lead.tier)}</span></td>'
-            f'<td><span class="chip">{e(lead.region)}</span></td>'
             f"<td>{grade_badge(lead)}</td>"
             f"<td>{STAGE_LABELS.get(lead.stage, lead.stage)}</td>"
             f"<td>{due_cell(lead)}</td></tr>")
 
 
-LEAD_TABLE_HEAD = ("<tr><th>公司</th><th>聯絡人</th><th>Tier</th><th>地區</th>"
-                   "<th>分級</th><th>階段</th><th>下次行動</th></tr>")
+LEAD_TABLE_HEAD = ("<tr><th>公司</th><th>聯絡人</th><th>州</th><th>來源</th>"
+                   "<th>Tier</th><th>分級</th><th>階段</th><th>下次行動</th></tr>")
 
 
 def job_widget() -> str:
@@ -151,7 +176,7 @@ def job_widget() -> str:
 # ─────────────────────────── 儀表板 ───────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-def home():
+def home(wiped: int = 0):
     db.init_db()
     leads = db.all_leads()
     active = [l for l in leads if l.stage != "archived"]
@@ -164,7 +189,7 @@ def home():
         for s in FUNNEL
     )
     overdue_rows = "".join(lead_row(l) for l in overdue) or \
-        '<tr><td colspan="7">無逾期項目 🎉</td></tr>'
+        '<tr><td colspan="8">無逾期項目 🎉</td></tr>'
     body = f"""
 {job_widget()}
 <h1>儀表板</h1>
@@ -179,8 +204,15 @@ def home():
 </div>
 <h2>⚠️ 逾期未跟進({len(overdue)})</h2>
 <table>{LEAD_TABLE_HEAD}{overdue_rows}</table>
-<p><a href="/leads">查看全部名單({len(active)} 筆進行中)→</a></p>"""
-    return page("儀表板", body, active="/")
+<p><a href="/leads">查看全部名單({len(active)} 筆進行中)→</a></p>
+<div class="card" style="border-color:#DBB;margin-top:36px">
+  <b style="color:var(--red)">危險區</b>
+  <span class="chip">目前 {len(leads)} 筆名單</span>
+  <a class="btn warn" href="/wipe" style="margin-left:10px">🗑 清空全部資料…</a>
+  <small class="hint">(需輸入確認字才會執行)</small>
+</div>"""
+    flash = f"✅ 已清空 {wiped} 筆名單(imports/ 的 CSV 原檔保留)" if wiped else ""
+    return page("儀表板", body, active="/", flash=flash)
 
 
 # ─────────────────────────── 名單 ───────────────────────────
@@ -208,7 +240,7 @@ def leads_list(stage: str = "", grade: str = "", q: str = ""):
         for g in "ABC"
     )
     rows = "".join(lead_row(l) for l in leads) or \
-        '<tr><td colspan="7">沒有符合的名單。<a href="/import">匯入名單 →</a></td></tr>'
+        '<tr><td colspan="8">沒有符合的名單。<a href="/import">匯入名單 →</a></td></tr>'
     body = f"""
 <h1>名單({len(leads)} 筆)</h1>
 <form method="get" class="row">
@@ -260,17 +292,19 @@ def lead_detail(lead_id: int, ok: str = ""):
     body = f"""
 <h1>{e(lead.company)} {grade_badge(lead)}</h1>
 <div class="row">
-  <span class="chip">{e(lead.tier)}</span><span class="chip">{e(lead.region)}</span>
+  <span class="chip">{e(lead.tier)}</span>
+  <span class="chip">州:{e(lead.state or '?')}{f' · {e(lead.city)}' if lead.city else ''}</span>
   <span class="chip">{STAGE_LABELS.get(lead.stage, lead.stage)}</span>
   <span class="chip">下次行動:{due_cell(lead)}</span>
-  <span class="chip">來源:{e(lead.source)}</span>
+  {source_chip(lead.source)}
 </div>
 {send_block}
 <div class="card"><h2 style="margin-top:0">聯絡人(共 {1 + len(lead.alt_contacts)} 位——收件人由你決定)</h2>
 <table>
 <tr><th></th><th>姓名</th><th>職稱</th><th>email</th><th></th></tr>
 <tr><td>⭐ 主收件人</td><td>{e(lead.contact_name or '—')}</td><td>{e(lead.title or '—')}</td>
-<td>{e(lead.email or '—')} <span class="chip">{'✅ 已驗證' if lead.email_verified else '未驗證'}</span></td><td></td></tr>
+<td>{e(lead.email or '—')} <span class="chip">{'✅ 已驗證' if lead.email_verified else '未驗證'}</span></td>
+<td>{linkedin_check_link(lead.contact_name, lead.company)}</td></tr>
 {alt_rows}
 </table>
 <form method="post" action="/leads/{lead.id}/contact" class="row">
@@ -290,7 +324,13 @@ def lead_detail(lead_id: int, ok: str = ""):
   <input name="note" placeholder="補充紀錄(選填,隨任一事件送出)" style="min-width:300px">
 </form></div>
 <div class="card"><h2 style="margin-top:0">互動紀錄</h2><div class="tl">{timeline}</div></div>
-<p><a href="/leads">← 回名單</a></p>"""
+<div class="row">
+  <a href="/leads">← 回名單</a>
+  <form class="inline" method="post" action="/leads/{lead.id}/delete"
+        onsubmit="return confirm('確定永久刪除「{e(lead.company)}」?此操作無法復原。')">
+    <button class="btn warn" type="submit" style="margin-left:24px">🗑 刪除此筆名單</button>
+  </form>
+</div>"""
     flash = "✅ 已更新" if ok else ""
     return page(lead.company, body, active="/leads", flash=flash)
 
@@ -301,6 +341,27 @@ def lead_track(lead_id: int, event: str = Form(...), note: str = Form("")):
     if lead and event in actions.TRACK_EVENTS:
         actions.apply_track(lead, event, note or None)
     return RedirectResponse(f"/leads/{lead_id}?ok=1", status_code=303)
+
+
+def _try_verify(email: str | None) -> bool:
+    """單筆即時驗證(手動改信箱/換人時用);失敗不阻擋,標未驗證即可。"""
+    from ..enrich import verify_email
+
+    if not email:
+        return False
+    try:
+        return verify_email(email)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+@app.post("/leads/{lead_id}/delete")
+def lead_delete(lead_id: int):
+    """單筆刪除(前端已跳確認對話框)。"""
+    lead = db.get_lead(lead_id)
+    if lead:
+        db.delete_lead(lead_id)
+    return RedirectResponse("/leads", status_code=303)
 
 
 @app.post("/leads/{lead_id}/primary/{idx}")
@@ -317,7 +378,7 @@ def lead_set_primary(lead_id: int, idx: int):
             ))
         lead.contact_name, lead.title = chosen.contact_name, chosen.title
         lead.email = (chosen.email or "").lower() or None
-        lead.email_verified = False  # 換人要重新驗證
+        lead.email_verified = _try_verify(lead.email)  # 換人即時重驗(單筆約 1 秒)
         db.save_lead(lead)
     return RedirectResponse(f"/leads/{lead_id}?ok=1", status_code=303)
 
@@ -332,7 +393,7 @@ def lead_contact(lead_id: int, contact_name: str = Form(""),
         new_email = email.strip().lower() or None
         if new_email != lead.email:
             lead.email = new_email
-            lead.email_verified = False  # 換了信箱要重新驗證
+            lead.email_verified = _try_verify(new_email)  # 換信箱即時重驗
         db.save_lead(lead)
     return RedirectResponse(f"/leads/{lead_id}?ok=1", status_code=303)
 
@@ -358,7 +419,8 @@ def review(approved: int = 0):
   <h2 style="margin-top:0"><a href="/leads/{lead.id}">{e(lead.company)}</a>
     {grade_badge(lead)} <span class="chip">收件人:{e(lead.contact_name or '無聯絡人')}
     · {e(lead.email or '⚠ 缺 email')}</span>
-    {f'<span class="chip">另有 {len(lead.alt_contacts)} 位備選聯絡人(詳情頁可切換)</span>' if lead.alt_contacts else ''}</h2>
+    {f'<span class="chip">另有 {len(lead.alt_contacts)} 位備選聯絡人(詳情頁可切換)</span>' if lead.alt_contacts else ''}
+    {linkedin_check_link(lead.contact_name, lead.company)}</h2>
   <div class="rationale">{e(lead.score_rationale or '')}</div>
   <form method="post" action="/review/{lead.id}/approve">
     <textarea name="draft" rows="12">{e(lead.pending_draft or '')}</textarea>
@@ -394,35 +456,53 @@ def review_reject(lead_id: int):
 
 # ─────────────────────────── 匯入 ───────────────────────────
 
-@app.get("/import", response_class=HTMLResponse)
-def import_form():
-    body = """
-<h1>匯入名單(CSV)</h1>
-<div class="card">
-<p>支援 <b>Apollo 網頁匯出檔</b>(欄位自動識別、姓名自動合併)與簡易格式
-(company/contact_name/title/email/website/city/state/tier)。
-自動去重:同公司多聯絡人依「品類買手 &gt; Owner &gt; 泛買手」保留,其餘轉備援。</p>
-<form method="post" action="/import" enctype="multipart/form-data" class="row">
-  <input type="file" name="file" accept=".csv" required>
-  <select name="tier">
-    <option value="T1_coffee">預設 Tier:T1 咖啡通路</option>
+_TIER_OPTIONS = """
+    <option value="T1_coffee">Tier:T1 咖啡通路</option>
     <option value="T0_rep">T0 Rep Group</option>
     <option value="T2_kitchen">T2 廚房專賣</option>
-    <option value="T3_mass">T3 大型量販(會被自動歸檔)</option>
-  </select>
+    <option value="T3_mass">T3 大型量販(會被自動歸檔)</option>"""
+
+
+@app.get("/import", response_class=HTMLResponse)
+def import_form():
+    source_opts = "".join(
+        f'<option value="{s}">{label}</option>'
+        for s, label in SOURCE_LABELS.items() if s not in ("places", "ocr")
+    )
+    body = f"""
+<h1>匯入名單</h1>
+<div class="card">
+<h2 style="margin-top:0">① CSV 上傳</h2>
+<p>支援 <b>Apollo 網頁匯出檔</b>(欄位自動識別、姓名自動合併)與簡易格式。
+選對「來源標籤」——名單頁會顯示,pipeline 也能依來源篩選。</p>
+<form method="post" action="/import" enctype="multipart/form-data" class="row">
+  <input type="file" name="file" accept=".csv" required>
+  <select name="label">{source_opts}</select>
+  <select name="tier">{_TIER_OPTIONS}</select>
   <button class="btn" type="submit">匯入</button>
-</form></div>"""
+</form></div>
+<div class="card">
+<h2 style="margin-top:0">② Google 地圖掃描城市店家</h2>
+<p>用一句自然語言搜尋(「業態 in 城市, 州」),Google 回傳最多 20 家實體店
+(店名/網站/州,<b>不含聯絡人 email</b>——之後用 Hunter 或 Apollo 補)。
+搜尋句自己改,要掃哪個城市、什麼業態,你說了算。</p>
+<form method="post" action="/scan" class="row">
+  <input name="query" value="specialty coffee roaster in Chicago, IL"
+         style="min-width:340px" required>
+  <select name="tier">{_TIER_OPTIONS}</select>
+  <button class="btn" type="submit">掃描並入庫</button>
+</form>
+<p><small class="hint">例:kitchenware store in Chicago, IL /
+coffee shop in Naperville, IL / specialty coffee roaster in Austin, TX</small></p>
+</div>"""
     return page("匯入名單", body, active="/import")
 
 
-@app.post("/import", response_class=HTMLResponse)
-async def import_csv(file: UploadFile, tier: str = Form("T1_coffee")):
-    db.init_db()
-    IMPORTS_DIR.mkdir(exist_ok=True)
-    dest = IMPORTS_DIR / f"web_{datetime.now():%Y%m%d_%H%M%S}_{Path(file.filename or 'upload.csv').name}"
-    dest.write_bytes(await file.read())
-
-    raw = ManualAdapter().fetch(file=str(dest), tier=tier)
+def _ingest_raw(raw: list, source_label: str | None = None) -> tuple[int, int, str]:
+    """去重 + 過濾庫內既有 + 入庫;回傳 (原始數, 入庫數, 去重日誌)。"""
+    if source_label:
+        for r in raw:
+            r.source = source_label
     buffer = io.StringIO()
     with redirect_stdout(buffer):
         merged = dedupe(raw, verbose=True)
@@ -434,21 +514,47 @@ async def import_csv(file: UploadFile, tier: str = Form("T1_coffee")):
         merged = [r for r in merged if r not in skipped_db]
         for r in merged:
             db.save_lead(to_lead(r))
-    log_text = buffer.getvalue().strip() or "(無去重紀錄)"
+    return len(raw), len(merged), buffer.getvalue().strip() or "(無去重紀錄)"
 
+
+def _import_result_page(title: str, total: int, kept: int, log_text: str) -> HTMLResponse:
     body = f"""
-<h1>匯入完成</h1>
+<h1>{e(title)}</h1>
 <div class="cards">
-  <div class="stat"><b>{len(raw)}</b><span>原始筆數</span></div>
-  <div class="stat"><b>{len(merged)}</b><span>入庫筆數</span></div>
-  <div class="stat"><b>{len(raw) - len(merged)}</b><span>去重/略過</span></div>
+  <div class="stat"><b>{total}</b><span>原始筆數</span></div>
+  <div class="stat"><b>{kept}</b><span>入庫筆數</span></div>
+  <div class="stat"><b>{total - kept}</b><span>去重/略過</span></div>
 </div>
-<h2>去重明細</h2><pre class="log">{e(log_text)}</pre>
+<h2>明細</h2><pre class="log">{e(log_text)}</pre>
 <div class="row">
   <a class="btn" href="/pipeline">▶ 下一步:執行 Pipeline</a>
   <a class="btn sec" href="/leads?stage=new">查看新名單</a>
+  <a class="btn sec" href="/import">← 再匯一批</a>
 </div>"""
-    return page("匯入完成", body, active="/import")
+    return page(title, body, active="/import")
+
+
+@app.post("/import", response_class=HTMLResponse)
+async def import_csv(file: UploadFile, tier: str = Form("T1_coffee"),
+                     label: str = Form("manual")):
+    db.init_db()
+    IMPORTS_DIR.mkdir(exist_ok=True)
+    dest = IMPORTS_DIR / f"web_{datetime.now():%Y%m%d_%H%M%S}_{Path(file.filename or 'upload.csv').name}"
+    dest.write_bytes(await file.read())
+
+    raw = ManualAdapter().fetch(file=str(dest), tier=tier)
+    total, kept, log_text = _ingest_raw(raw, source_label=label)
+    return _import_result_page("CSV 匯入完成", total, kept, log_text)
+
+
+@app.post("/scan", response_class=HTMLResponse)
+def scan_places(query: str = Form(...), tier: str = Form("T1_coffee")):
+    from ..adapters import PlacesAdapter
+
+    db.init_db()
+    raw = PlacesAdapter().fetch(query=query, tier=tier)
+    total, kept, log_text = _ingest_raw(raw)  # source 保持 places
+    return _import_result_page(f"掃描完成:{query}", total, kept, log_text)
 
 
 # ─────────────────────────── Pipeline ───────────────────────────
@@ -456,14 +562,29 @@ async def import_csv(file: UploadFile, tier: str = Form("T1_coffee")):
 @app.get("/pipeline", response_class=HTMLResponse)
 def pipeline_page():
     snap = jobs.snapshot()
-    new_count = len([l for l in db.list_leads(stage="new") if not l.pending_draft])
+    pending_new = [l for l in db.list_leads(stage="new") if not l.pending_draft]
     running = snap["running"]
+
+    # 州與來源選項:從庫內現有新名單動態產生,附各自筆數
+    from collections import Counter
+    state_counts = Counter((l.state or "?") for l in pending_new)
+    source_counts = Counter(l.source for l in pending_new)
+    state_opts = '<option value="">全部州</option>' + "".join(
+        f'<option value="{e(s)}">{e(s)}({n} 筆)</option>'
+        for s, n in sorted(state_counts.items())
+    )
+    source_opts = '<option value="">全部來源</option>' + "".join(
+        f'<option value="{e(s)}">{e(SOURCE_LABELS.get(s, s))}({n} 筆)</option>'
+        for s, n in sorted(source_counts.items())
+    )
     body = f"""
 <h1>Pipeline(豐富 → 評分 → 寫信 → 覆核佇列)</h1>
 <div class="card">
-<p>待處理新名單:<b>{new_count}</b> 筆。每筆約 2–4 分鐘(會上網查該公司背景),
-3 筆平行處理;啟動後可離開此頁,隨時回來看進度。</p>
+<p>待處理新名單:<b>{len(pending_new)}</b> 筆。每筆約 2–4 分鐘(會上網查該公司背景),
+平行處理;啟動後可離開此頁,隨時回來看進度。</p>
 <form method="post" action="/pipeline/start" class="row">
+  <label>州 <select name="state">{state_opts}</select></label>
+  <label>來源 <select name="source">{source_opts}</select></label>
   <label>筆數上限 <input type="number" name="limit" min="1" placeholder="全部" style="width:90px"></label>
   <label>平行數 <input type="number" name="workers" value="3" min="1" max="5" style="width:70px"></label>
   <button class="btn" type="submit" {"disabled" if running else ""}>
@@ -486,14 +607,16 @@ poll();
 
 
 @app.post("/pipeline/start")
-def pipeline_start(limit: str = Form(""), workers: int = Form(3)):
+def pipeline_start(limit: str = Form(""), workers: int = Form(3),
+                   state: str = Form(""), source: str = Form("")):
     from ..graph import prepare_batch, run_pipeline
 
     limit_n = int(limit) if limit.strip().isdigit() else None
     workers = max(1, min(int(workers), 5))
 
     def job(log):
-        leads, messages = prepare_batch(limit_n)
+        leads, messages = prepare_batch(
+            limit_n, state=state or None, source=source or None)
         for msg in messages:
             log(msg)
         if not leads:
@@ -529,6 +652,59 @@ def followup_start():
 @app.get("/jobs/status")
 def jobs_status():
     return JSONResponse(jobs.snapshot())
+
+
+# ─────────────────────────── 清空資料(雙重確認) ───────────────────────────
+
+@app.get("/wipe", response_class=HTMLResponse)
+def wipe_confirm(err: str = ""):
+    from ..config import OUTBOX_DIR
+
+    leads = db.all_leads()
+    eml_count = len(list(OUTBOX_DIR.glob("*.eml"))) if OUTBOX_DIR.exists() else 0
+    running = jobs.snapshot()["running"]
+    flash_err = ""
+    if err == "confirm":
+        flash_err = "確認字不符——必須輸入大寫 DELETE 才會執行"
+    elif err == "running":
+        flash_err = "背景任務執行中,禁止清空;等任務結束再操作"
+
+    body = f"""
+<h1 style="color:var(--red)">⚠️ 清空全部資料</h1>
+<div class="card" style="border-color:#DBB">
+<p>此操作<b>無法復原</b>,將刪除:</p>
+<ul>
+  <li><b>{len(leads)} 筆名單</b>(含評分、背景情報、信件草稿、互動紀錄、階段狀態)</li>
+  <li>Pipeline 斷點快取(checkpoints)</li>
+  <li>outbox 裡 {eml_count} 封已核准信件檔</li>
+</ul>
+<p>會保留:<code>imports/</code> 裡你上傳過的 CSV 原檔(可重新匯入)。</p>
+<form method="post" action="/wipe" class="row">
+  <input name="confirm" placeholder="輸入 DELETE 以確認" autocomplete="off"
+         style="min-width:220px" {"disabled" if running else ""}>
+  <button class="btn warn" type="submit" {"disabled" if running else ""}>
+    {"背景任務執行中,暫不可清空" if running else "確認清空(無法復原)"}</button>
+  <a class="btn sec" href="/">取消</a>
+</form></div>"""
+    return page("清空資料", body, active="/", flash_err=flash_err)
+
+
+@app.post("/wipe")
+def wipe_execute(confirm: str = Form("")):
+    from ..config import CHECKPOINT_PATH, OUTBOX_DIR
+
+    if jobs.snapshot()["running"]:
+        return RedirectResponse("/wipe?err=running", status_code=303)
+    if confirm.strip() != "DELETE":   # 大小寫都要正確,防誤觸
+        return RedirectResponse("/wipe?err=confirm", status_code=303)
+
+    deleted = db.wipe_leads()
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{CHECKPOINT_PATH}{suffix}").unlink(missing_ok=True)
+    if OUTBOX_DIR.exists():
+        for f in OUTBOX_DIR.glob("*.eml"):
+            f.unlink()
+    return RedirectResponse(f"/?wiped={deleted}", status_code=303)
 
 
 # ─────────────────────────── 名片掃描(展中,手機) ───────────────────────────

@@ -46,6 +46,8 @@ def _conn():
 def init_db() -> None:
     with _conn() as c:
         c.executescript(_SCHEMA)
+        # WAL 模式:允許讀寫並行,大幅降低平行 pipeline 的鎖衝突(設定會持久化)
+        c.execute("PRAGMA journal_mode=WAL")
 
 
 def save_lead(lead: Lead) -> Lead:
@@ -110,6 +112,21 @@ def find_by_company_or_email(company: str, email: str | None = None) -> Lead | N
             "SELECT data FROM leads WHERE lower(company) = lower(?)", (company,)
         ).fetchone()
     return Lead.model_validate_json(row["data"]) if row else None
+
+
+def delete_lead(lead_id: int) -> bool:
+    """刪除單筆名單;回傳是否真的刪到東西。"""
+    with _conn() as c:
+        cur = c.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
+        return cur.rowcount > 0
+
+
+def wipe_leads() -> int:
+    """刪除全部名單(危險操作,僅供 UI 雙重確認流程呼叫)。回傳刪除筆數。"""
+    with _conn() as c:
+        count = c.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+        c.execute("DELETE FROM leads")
+    return count
 
 
 def overdue_leads(today: date | None = None) -> list[Lead]:

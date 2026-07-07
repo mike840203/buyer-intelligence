@@ -53,7 +53,7 @@ def cmd_ingest(args) -> None:
 def cmd_pipeline(args) -> None:
     from .graph import prepare_batch, run_pipeline  # 延遲載入:langgraph 啟動較慢
 
-    leads, messages = prepare_batch(args.limit)
+    leads, messages = prepare_batch(args.limit, state=args.state, source=args.source)
     for msg in messages:
         print(f"  {msg}")
     if not leads:
@@ -176,6 +176,8 @@ def main(argv: list[str] | None = None) -> None:
     p_pipe.add_argument("--limit", type=int, help="本次最多處理筆數(控制額度)")
     p_pipe.add_argument("--workers", type=int, default=3,
                         help="平行處理筆數(預設 3;撞訂閱限流就降 1)")
+    p_pipe.add_argument("--state", help="只跑指定州(縮寫,如 IL、WA、TX)")
+    p_pipe.add_argument("--source", help="只跑指定來源(apollo / places / …)")
     p_pipe.set_defaults(func=cmd_pipeline)
 
     sub.add_parser("review", help="人工覆核信件草稿").set_defaults(func=cmd_review)
