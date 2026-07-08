@@ -40,7 +40,7 @@ TRACK_LABELS = {
 SOURCE_LABELS = {
     "apollo": "Apollo", "places": "Google 地圖", "iha": "IHA 展場",
     "linkedin": "LinkedIn", "stockists": "競品 Stockists",
-    "manual": "手動/CSV", "ocr": "展中名片",
+    "importyeti": "ImportYeti 海關", "manual": "手動/CSV", "ocr": "展中名片",
 }
 
 
@@ -498,40 +498,75 @@ coffee shop in Naperville, IL / specialty coffee roaster in Austin, TX</small></
     return page("匯入名單", body, active="/import")
 
 
-def _ingest_raw(raw: list, source_label: str | None = None) -> tuple[int, int, str]:
-    """去重 + 過濾庫內既有 + 入庫;回傳 (原始數, 入庫數, 去重日誌)。"""
+# 待確認的匯入批次(記憶體暫存:單人系統,預覽 → 確認之間的中繼站)
+_PENDING_IMPORTS: dict[str, dict] = {}
+_PENDING_CAP = 5  # 只留最近幾批,舊的自動淘汰
+
+
+def _prepare_import(raw: list, source_label: str | None = None) -> tuple[list, str]:
+    """去重 + 過濾庫內既有,「不入庫」。回傳 (待確認名單, 去重日誌)。"""
     if source_label:
         for r in raw:
             r.source = source_label
     buffer = io.StringIO()
     with redirect_stdout(buffer):
         merged = dedupe(raw, verbose=True)
-        skipped_db = []
+        kept = []
         for r in merged:
             if db.find_by_company_or_email(r.company, r.email):
-                skipped_db.append(r)
                 print(f"  ✂ 略過「{r.company}」—— 資料庫已有此公司")
-        merged = [r for r in merged if r not in skipped_db]
-        for r in merged:
-            db.save_lead(to_lead(r))
-    return len(raw), len(merged), buffer.getvalue().strip() or "(無去重紀錄)"
+            else:
+                kept.append(r)
+    return kept, buffer.getvalue().strip() or "(無去重紀錄)"
 
 
-def _import_result_page(title: str, total: int, kept: int, log_text: str) -> HTMLResponse:
+def _preview_page(title: str, token: str, raws: list, total: int, log_text: str) -> HTMLResponse:
+    """匯入預覽:逐筆勾選(預設全選),取消勾選 = 不匯入;確認後才寫入資料庫。"""
+    rows = "".join(
+        f'<tr><td><input type="checkbox" name="keep" value="{i}" checked></td>'
+        f"<td>{e(r.company)}</td>"
+        f"<td>{e(r.contact_name or '—')}<br><small class='hint'>{e(r.title or '')}</small></td>"
+        f"<td>{e(r.email or '—')}</td>"
+        f"<td>{e(r.state or '?')}</td>"
+        f'<td><span class="chip">{e(r.tier)}</span></td>'
+        f"<td>{len(r.alt_contacts) or '—'}</td></tr>"
+        for i, r in enumerate(raws)
+    ) or '<tr><td colspan="7">去重後沒有可匯入的新名單。</td></tr>'
     body = f"""
-<h1>{e(title)}</h1>
+<h1>檢視後確認匯入 — {e(title)}</h1>
 <div class="cards">
   <div class="stat"><b>{total}</b><span>原始筆數</span></div>
-  <div class="stat"><b>{kept}</b><span>入庫筆數</span></div>
-  <div class="stat"><b>{total - kept}</b><span>去重/略過</span></div>
+  <div class="stat"><b>{len(raws)}</b><span>待你確認</span></div>
+  <div class="stat"><b>{total - len(raws)}</b><span>去重/已在庫</span></div>
 </div>
-<h2>明細</h2><pre class="log">{e(log_text)}</pre>
-<div class="row">
-  <a class="btn" href="/pipeline">▶ 下一步:執行 Pipeline</a>
-  <a class="btn sec" href="/leads?stage=new">查看新名單</a>
-  <a class="btn sec" href="/import">← 再匯一批</a>
-</div>"""
-    return page(title, body, active="/import")
+<div class="card">
+<p><b>尚未寫入資料庫。</b>取消勾選 = 不匯入該筆;確認後才正式入庫。</p>
+<form method="post" action="/import/confirm">
+  <input type="hidden" name="token" value="{token}">
+  <table>
+    <tr><th><input type="checkbox" checked
+        onclick="document.querySelectorAll('input[name=keep]').forEach(c=>c.checked=this.checked)">
+        </th><th>公司</th><th>聯絡人</th><th>email</th><th>州</th><th>Tier</th><th>備選</th></tr>
+    {rows}
+  </table>
+  <div class="row" style="margin-top:12px">
+    <button class="btn" type="submit" {"disabled" if not raws else ""}>✅ 確認匯入勾選的名單</button>
+    <a class="btn sec" href="/import">✘ 放棄這批</a>
+  </div>
+</form></div>
+<h2>去重明細</h2><pre class="log">{e(log_text)}</pre>"""
+    return page("確認匯入", body, active="/import")
+
+
+def _stash_pending(title: str, raws: list, total: int, log_text: str) -> HTMLResponse:
+    import secrets
+
+    token = secrets.token_hex(8)
+    _PENDING_IMPORTS[token] = {"title": title, "raws": raws,
+                               "total": total, "log": log_text}
+    while len(_PENDING_IMPORTS) > _PENDING_CAP:  # 淘汰最舊
+        _PENDING_IMPORTS.pop(next(iter(_PENDING_IMPORTS)))
+    return _preview_page(title, token, raws, total, log_text)
 
 
 @app.post("/import", response_class=HTMLResponse)
@@ -543,8 +578,8 @@ async def import_csv(file: UploadFile, tier: str = Form("T1_coffee"),
     dest.write_bytes(await file.read())
 
     raw = ManualAdapter().fetch(file=str(dest), tier=tier)
-    total, kept, log_text = _ingest_raw(raw, source_label=label)
-    return _import_result_page("CSV 匯入完成", total, kept, log_text)
+    kept, log_text = _prepare_import(raw, source_label=label)
+    return _stash_pending(f"CSV:{Path(file.filename or '').name}", kept, len(raw), log_text)
 
 
 @app.post("/scan", response_class=HTMLResponse)
@@ -553,8 +588,34 @@ def scan_places(query: str = Form(...), tier: str = Form("T1_coffee")):
 
     db.init_db()
     raw = PlacesAdapter().fetch(query=query, tier=tier)
-    total, kept, log_text = _ingest_raw(raw)  # source 保持 places
-    return _import_result_page(f"掃描完成:{query}", total, kept, log_text)
+    kept, log_text = _prepare_import(raw)  # source 保持 places
+    return _stash_pending(f"掃描:{query}", kept, len(raw), log_text)
+
+
+@app.post("/import/confirm", response_class=HTMLResponse)
+def import_confirm(token: str = Form(...), keep: list[str] = Form(default=[])):
+    pending = _PENDING_IMPORTS.pop(token, None)
+    if pending is None:
+        return page("批次已失效", "<h1>這批預覽已失效</h1><p>請重新上傳/掃描。</p>"
+                    '<p><a class="btn" href="/import">← 回匯入頁</a></p>', active="/import")
+    raws = pending["raws"]
+    chosen = [raws[int(i)] for i in keep if i.isdigit() and int(i) < len(raws)]
+    for r in chosen:
+        db.save_lead(to_lead(r))
+    dropped = len(raws) - len(chosen)
+    body = f"""
+<h1>匯入完成 — {e(pending["title"])}</h1>
+<div class="cards">
+  <div class="stat"><b>{len(chosen)}</b><span>已入庫</span></div>
+  <div class="stat"><b>{dropped}</b><span>檢視時被你刪除</span></div>
+  <div class="stat"><b>{pending["total"] - len(raws)}</b><span>去重/已在庫</span></div>
+</div>
+<div class="row">
+  <a class="btn" href="/pipeline">▶ 下一步:執行 Pipeline</a>
+  <a class="btn sec" href="/leads?stage=new">查看新名單</a>
+  <a class="btn sec" href="/import">← 再匯一批</a>
+</div>"""
+    return page("匯入完成", body, active="/import")
 
 
 # ─────────────────────────── Pipeline ───────────────────────────

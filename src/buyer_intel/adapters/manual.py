@@ -21,7 +21,9 @@ VALID_TIERS = {"T0_rep", "T1_coffee", "T2_kitchen", "T3_mass"}
 
 # 欄位別名:依序取第一個有值的欄位(個人欄位優先於公司欄位)
 ALIASES: dict[str, list[str]] = {
-    "company": ["company", "company name", "organization", "company name for emails"],
+    # consignee = 海關提單的「收貨方」,ImportYeti 匯出用此欄位名
+    "company": ["company", "company name", "organization",
+                "company name for emails", "consignee", "consignee name"],
     "contact_name": ["contact_name", "full name", "name", "contact"],
     "first_name": ["first name", "first_name"],
     "last_name": ["last name", "last_name"],

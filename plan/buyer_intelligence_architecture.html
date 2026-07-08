@@ -117,6 +117,7 @@ footer{margin-top:64px;padding:30px 0 48px;border-top:1px solid var(--line);font
       <tr><td>來源追蹤</td><td>未規範</td><td class="ok">每筆名單帶來源標籤(Apollo / Google 地圖 / IHA / LinkedIn / 競品 Stockists / 手動 / 名片),CSV 匯入時自選;供各來源轉化率歸因</td></tr>
       <tr><td>email 驗證時機</td><td>匯入時(同步)</td><td class="ok">移至 pipeline L2 背景(匯入秒進不卡 UI);手動改信箱/換主收件人時即時驗證單筆。Hunter Free(100 次/月)已接通</td></tr>
       <tr><td>資料治理</td><td>未規範</td><td class="ok">清空全部(輸入 DELETE 雙重確認,任務執行中禁用)、單筆刪除(確認框)、LinkedIn 在職查核連結(寄信前人工確認,合規不爬蟲)</td></tr>
+      <tr><td>名單來源策略</td><td>Apollo 為主</td><td class="ok"><strong>多來源接力</strong>:Google 地圖(找店,翻頁~60家)→ Hunter 網域反查(找人)→ Hunter 驗證,免費鏈補齊 Apollo 對小店的覆蓋盲區;LinkedIn 僅用於 T2 大零售(小店老闆不在 LinkedIn);ImportYeti 手查找 T0 經銷商。決策:不接爬蟲類自動化(Apify LinkedIn/ImportYeti 評估後 revert——脆弱、會被封、髒資料仍需人工判斷)</td></tr>
     </tbody>
   </table>
 </section>
@@ -163,7 +164,7 @@ footer{margin-top:64px;padding:30px 0 48px;border-top:1px solid var(--line);font
 <section id="s03">
   <div class="sec-label"><span class="no">03</span><h2>五層架構總覽</h2></div>
   <div class="layer"><div class="ln">L1</div><div class="lc"><h4>資料擷取 Data Ingestion — 進料口</h4><small>四來源 → 統一 RawLead;指令 ingest</small>
-    <span class="chip">ApolloAdapter</span><span class="chip">PlacesAdapter</span><span class="chip">IHAAdapter</span><span class="chip">ManualAdapter(Apollo CSV 自動識別)</span></div></div>
+    <span class="chip">ApolloAdapter</span><span class="chip">PlacesAdapter(翻頁~60家)</span><span class="chip">HunterAdapter(網域反查)</span><span class="chip">IHAAdapter</span><span class="chip">ManualAdapter(Apollo/ImportYeti CSV 自動識別)</span></div></div>
   <div class="flow">▼</div>
   <div class="layer"><div class="ln">L2</div><div class="lc"><h4>清洗豐富 Enrichment — 情報引擎</h4><small>去重(含聯絡人優先序+備援)→ email 驗證 → web 背景補全</small>
     <span class="chip">rapidfuzz</span><span class="chip">Hunter.io</span><span class="chip">WebSearch</span><span class="chip model">Sonnet 查 + Haiku 抽</span></div></div>
@@ -188,7 +189,8 @@ footer{margin-top:64px;padding:30px 0 48px;border-top:1px solid var(--line);font
     <thead><tr><th>Adapter</th><th>端點/輸入</th><th>參數</th><th>產出與備註</th></tr></thead>
     <tbody>
       <tr><td><code>ApolloAdapter</code></td><td><code>POST api.apollo.io/api/v1/mixed_people/search</code>,金鑰放 <code>X-Api-Key</code></td><td><code>keywords</code>、<code>locations</code>(預設 WA/OR/TX)、<code>titles</code>(預設 Buyer/Category Manager/Merchandising/Purchasing/Owner/Founder)、<code>per_page=25</code></td><td>公司+決策人+email。<span class="warn">403 API_INACCESSIBLE(免費方案)時拋出含替代路徑的明確錯誤</span></td></tr>
-      <tr><td><code>PlacesAdapter</code></td><td><code>POST places.googleapis.com/v1/places:searchText</code>(Places API New),FieldMask 僅 displayName/formattedAddress/websiteUri</td><td><code>query</code>(自然語言「類別 in 城市, 州」)、<code>max_results=20</code></td><td>只有店名/地址/網站,從地址抽州別;notes 註記「需回頭找決策人」</td></tr>
+      <tr><td><code>PlacesAdapter</code></td><td><code>POST places.googleapis.com/v1/places:searchText</code>(Places API New),FieldMask 僅 displayName/formattedAddress/websiteUri/<strong>nextPageToken</strong></td><td><code>query</code>(自然語言「類別 in 城市, 州」)、<code>max_results=60</code></td><td>只有店名/網站/州(<strong>不含 email</strong>);<strong>自動翻頁</strong>:單頁上限 20,靠 nextPageToken 湊到 ~60 家(單一查詢 Google 上限)。notes 註記「需回頭用 Hunter 網域反查找決策人」</td></tr>
+      <tr><td><code>HunterAdapter</code>(網域反查)</td><td><code>GET api.hunter.io/v2/domain-search</code>,金鑰 <code>api_key</code></td><td>公司網域(通常來自 Places 掃到的 websiteUri)</td><td>接 Places 的第二棒:拿網域反查該公司公開署名的決策人 email(帶姓名/職稱/可信度)。實測獨立烘豆商可挖出多位帶職稱、可信度 97–99 的聯絡人——正面補齊 Apollo 對小店的覆蓋盲區</td></tr>
       <tr><td><code>IHAAdapter</code></td><td>展商名錄 CSV</td><td><code>file</code>、<code>tier</code>(預設 T0_rep)</td><td>欄位別名映射(COLUMN_MAP 可調);T0 Rep 名單核心來源</td></tr>
       <tr><td><code>ManualAdapter</code></td><td>任意 CSV</td><td><code>file</code>、<code>tier</code>(列級 tier 欄優先,否則用參數)</td><td><strong>雙格式自動識別</strong>:簡易格式(company/contact_name/…)與 Apollo 匯出格式(First/Last Name 自動合併;Company/State/Company State 別名映射;Industry、# Employees、Email Status 收進 notes)</td></tr>
     </tbody>
@@ -251,6 +253,7 @@ notes 附加   ← industry(產業)、# employees(員工數)、email status(Apol
     </tbody>
   </table>
   <h3>6.2 一般評分:總分 = 0.40×通路契合 + 0.25×規模 + 0.20×地區 + 0.15×決策權</h3>
+  <p><strong>設計原則:能用規則算的用規則(透明、零成本、可複查),需要判斷的才交給 AI。</strong>四維中三維(規模/地區/決策權規則部分)是明文死規則,分數表如下、權重全在 <code>config.py</code> 可改;只有通路契合 40% 與決策權的一半是 LLM 判斷。整筆結果不是黑箱——每筆寫入白話 <code>score_rationale</code>(各維得分 + LLM 加減分理由),資料庫存、Web UI 名單詳情頁「評分依據」欄直接顯示。</p>
   <table>
     <thead><tr><th>維度(權重)</th><th>計算方式</th><th>分數表</th></tr></thead>
     <tbody>
@@ -263,6 +266,7 @@ notes 附加   ← industry(產業)、# employees(員工數)、email status(Apol
   <h3>6.3 分級與條件分流</h3>
   <p><strong>≥70 → A</strong>(進 L4,信件逐封人工覆核);<strong>50–69 → B</strong>(進 L4);<strong>&lt;50 → C</strong>(stage=archived,不觸達,不再花任何成本)。每筆寫入完整 <code>score_rationale</code>(各維分數+LLM 理由)。</p>
   <div class="callout"><p><strong>實測校準:</strong>首批名單 P1 地區公司全數 A(73–78 分)、NY 71 分 A、KY(OTHER)62.7 B、29,000 人飲料集團被 T3/低契合攔下——與戰略地區優先序一致,權重免調。</p></div>
+  <div class="callout"><p><strong>透明度實例(Intelligentsia Coffee):</strong>通路契合 82(40%)、規模 100(14 家店在甜蜜點,25%)、地區 60(IL,20%)、決策權 52(15%)→ 總分 77.7 = A。LLM 加分理由「官網已賣 Fellow Atmos,品類有貨架」;<strong>扣分理由「但聯絡人是 Green Coffee Buyer——採購生豆的上游,與零售端器材選品分屬不同部門,對配件上架影響力有限」</strong>。此即 AI 的價值:規則看職稱都有 Buyer 字樣分不出,AI 讀懂咖啡業部門分工、把決策權從高分壓到 52。整段理由 UI 可見,人可審計、可覆核時推翻。</p></div>
 </section>
 
 <!-- 07 -->

@@ -49,13 +49,21 @@ def _dump(lead: Lead) -> dict:
 # ── 節點 ──
 
 def node_enrich(state: LeadState) -> dict:
-    lead = enrich_lead(_lead(state))
+    lead = _lead(state)
+    # 續跑省錢:上次跑到一半失敗的 lead,背景調查(最貴的一步)已存庫就不重查
+    if lead.enrichment_notes and lead.store_count is not None:
+        return {"lead": _dump(lead)}
+    lead = enrich_lead(lead)
     db.save_lead(lead)
     return {"lead": _dump(lead)}
 
 
 def node_score(state: LeadState) -> dict:
-    lead = score_lead(_lead(state))
+    lead = _lead(state)
+    # 續跑省錢:已有分數與分級者不重評
+    if lead.score is not None and lead.grade:
+        return {"lead": _dump(lead)}
+    lead = score_lead(lead)
     db.save_lead(lead)
     return {"lead": _dump(lead)}
 

@@ -8,6 +8,7 @@
 | [apollo.md](apollo.md) | Apollo.io | **L1 主力名單來源**:用職稱×產業×地區找買家決策人與 email | 名單量產必備 |
 | [hunter.md](hunter.md) | Hunter.io | **L2 email 驗證**:寄信前過濾無效信箱,保護網域信譽 | 強烈建議 |
 | [google-maps.md](google-maps.md) | Google Maps Places API | **L1 店家掃描**:按城市找獨立咖啡店/廚具零售商 | 建議 |
+| [importyeti.md](importyeti.md) | ImportYeti(海關提單) | **L1 T0 經銷商來源**:找「會進口」的公司、逆向競品物流鏈 | 建議(免費) |
 
 三者都是可選的:缺金鑰時對應功能會明確報錯,其他功能照常運作。
 金鑰一律填在 **`.env`**(不進版控),不要填 `.env.example`。

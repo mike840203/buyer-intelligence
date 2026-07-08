@@ -40,6 +40,23 @@ def test_simple_format_still_works(tmp_path):
     assert leads[0].state == "OR"
 
 
+def test_importyeti_consignee_format(tmp_path):
+    """ImportYeti 海關提單格式:Consignee 欄位映射為公司,T0 經銷商流程。"""
+    f = tmp_path / "importyeti.csv"
+    f.write_text(
+        "Consignee,City,State\n"
+        "ABC Kitchen Distributors,Chicago,IL\n"
+        "XYZ Home Goods Import,Elk Grove Village,Illinois\n",
+        encoding="utf-8",
+    )
+    leads = ManualAdapter().fetch(file=str(f), tier="T0_rep")
+    assert len(leads) == 2
+    assert leads[0].company == "ABC Kitchen Distributors"
+    assert leads[0].tier == "T0_rep"
+    assert leads[0].state == "IL"
+    assert leads[1].state == "Illinois"  # 全名於入庫時(to_lead)正規化為 IL
+
+
 def test_tier_param_as_default(tmp_path):
     f = tmp_path / "reps.csv"
     f.write_text("Company,First Name,Last Name\nAcme Rep Group,Bob,Chan\n", encoding="utf-8")

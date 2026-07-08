@@ -93,9 +93,17 @@ def _cli_run(prompt: str, model: str, allowed_tools: list[str] | None = None) ->
             f"找不到 claude CLI({CLAUDE_CLI})。請安裝 Claude Code,"
             "或以 CLAUDE_CLI 環境變數指定路徑,或改用 LLM_BACKEND=api。"
         ) from exc
-    if result.returncode != 0:
+    except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
-            f"claude CLI 執行失敗(model={alias}):{result.stderr.strip()[:500]}"
+            f"claude CLI 逾時(model={alias},>600 秒)。常見原因:電腦睡眠後"
+            "連線凍結、網路中斷。重跑 pipeline 會自動接續。"
+        ) from exc
+    if result.returncode != 0:
+        # claude 的錯誤常印在 stdout 而非 stderr,兩個都撈
+        detail = (result.stderr.strip() or result.stdout.strip())[:500]
+        raise RuntimeError(
+            f"claude CLI 執行失敗(model={alias}):{detail or '(無錯誤輸出)'}"
+            "——常見原因:訂閱用量達上限(等額度視窗重置)、電腦睡眠中斷連線。"
         )
     return result.stdout.strip()
 
