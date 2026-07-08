@@ -3,8 +3,8 @@
 支援 **The Inspired Home Show 2027(芝加哥,3/9–3/11)** 參展的全週期 B2B 買家開發系統:
 **展前找買家 → 展中管理接觸 → 展後自動跟進**。
 
-本 repo 是 [`plan/buyer_intelligence_architecture.html`](../plan/buyer_intelligence_architecture.html) 的實作;
-商業脈絡見 [`plan/ankomn_strategy_report.html`](../plan/ankomn_strategy_report.html)。
+本 repo 是 [`plan/buyer_intelligence_architecture.html`](plan/buyer_intelligence_architecture.html) 的實作;
+商業脈絡見 [`plan/ankomn_strategy_report.html`](plan/ankomn_strategy_report.html)。
 
 ## 系統架構(五層 Pipeline)
 
@@ -56,7 +56,9 @@ graph TD;
 - 三個動作依序:
   1. **去重**:公司名模糊比對(自動剝除 Inc/LLC 等後綴)+ email 網域合併,
      資訊較完整的一筆勝出——避免同一家被觸達兩次
-  2. **email 驗證**(Hunter):無效信箱標記,保護寄件網域信譽
+  2. **email 驗證**(Hunter):無效信箱標記,保護寄件網域信譽——
+     **在 pipeline 背景執行,不在匯入時**(匯入保持秒進不卡 UI);
+     手動改信箱或切換主收件人時則當場即時驗證單筆
   3. **背景豐富**:Sonnet 帶 WebSearch 上網查這家公司(規模、通路、競品),
      Haiku 把查到的內容抽成結構化欄位
 - 沒有它:L3 沒依據亂評分,L4 的「為什麼找上你」只能瞎編——**個人化立刻退化成罐頭信**
@@ -162,12 +164,21 @@ Apollo / Hunter / Google Maps 未設定時,對應 adapter 會明確報錯,
 buyer-intel serve        # 然後瀏覽器開 http://localhost:8000
 ```
 
-所有操作都在網頁完成:**儀表板**(漏斗+逾期警示)、**名單**(篩選/搜尋/詳情;
-同公司**全部聯絡人都保留**,詳情頁一鍵切換主收件人——寄給誰由你決定)、
-**覆核佇列**(線上改稿+核准+一鍵開郵件寄信)、**匯入名單**(拖放 CSV,
-去重明細即時顯示)、**Pipeline**(背景執行+即時日誌,可關頁)、
-**推進階段**(回信/會議/樣品/報價/PO 按鈕)、**名片掃描**(手機開
-`http://<電腦IP>:8000/card`)。開發信一律全英文(三重語言防線)。
+所有操作都在網頁完成:
+
+- **儀表板**:漏斗+逾期警示+背景任務狀態;底部「危險區」可**清空全部資料**
+  (需輸入 `DELETE` 雙重確認,任務執行中會鎖住)
+- **名單**:階段/分級篩選、搜尋;列表顯示**州**與**來源**欄;詳情頁含
+  全部聯絡人表(同公司**全部保留**,一鍵切換主收件人)、**LinkedIn 在職查核**
+  連結(寄信前 30 秒人工確認)、**單筆刪除**(跳確認框)
+- **覆核佇列**:線上改稿+核准+一鍵開郵件寄信;每封附 LinkedIn 查核連結
+- **匯入名單**:① CSV 上傳(**自選來源標籤**:Apollo/LinkedIn/Stockists/IHA…,
+  秒進不卡)② **Google 地圖掃描**(自訂搜尋句「業態 in 城市, 州」)
+- **Pipeline**:可依**州 × 來源**篩選(下拉附各項筆數),背景執行+即時日誌
+- **推進階段**:回信/會議/樣品/報價/PO 按鈕
+- **名片掃描**:手機開 `http://<電腦IP>:8000/card`
+
+開發信一律全英文(三重語言防線);email 驗證在 pipeline 背景執行。
 
 ## 使用方式 B:CLI(腳本化用,功能相同)
 
@@ -182,7 +193,7 @@ buyer-intel ingest --source places --query "coffee roaster in Austin, TX"  # 掃
 buyer-intel ingest --source iha --file iha_exhibitors.csv --tier T0_rep    # IHA 名錄(Rep 線索)
 
 # 2. L2–L4 全流程:豐富 → 評分 → 信件草稿 → 覆核佇列
-buyer-intel pipeline --limit 20        # --limit 控制單次 API 花費
+buyer-intel pipeline --limit 20 --state IL --source apollo  # 州/來源/筆數皆可篩
 
 # 3. 人工覆核:逐筆看草稿,核准後輸出 outbox/ 由人工寄送
 buyer-intel review
@@ -285,6 +296,7 @@ buyer-intelligence/
 │   ├── field_ops/           # L5:ocr.py(名片)/ brief.py(攻略)
 │   ├── dashboard.py         # 靜態看板 HTML(Web UI 首頁為即時版)
 │   └── cli.py               # buyer-intel 指令入口(serve 啟動 Web UI)
+├── plan/                    # 兩份正式文件:最終計劃書 + 系統規格書(HTML)
 ├── docs/                    # 外部工具指南(Apollo / Hunter / Google Maps)
 ├── tests/                   # 規則評分與去重的單元測試(不需 API 金鑰)
 ├── examples/seed_leads.csv  # 種子名單範例(T1 咖啡器材電商)
@@ -328,8 +340,10 @@ pytest        # 純規則邏輯,不呼叫 API、不需金鑰
 - [ ] Web UI 覆核佇列逐封核准 → 一鍵開郵件寄出第一批開發信
 - [x] 申請 Apollo 帳號 → 已填 `APOLLO_API_KEY`(注意:**People Search API 需付費方案**,
       免費方案改走網頁搜尋 → 匯出 CSV → Web UI 匯入頁上傳)
-- [ ] 申請 Hunter 免費帳號 → 填 `HUNTER_API_KEY`(email 驗證,退信率是網域信譽命脈)
-- [ ] 申請 Google Maps 金鑰 → 填 `GOOGLE_MAPS_API_KEY`(掃 P1/P2 城市獨立店家)
+- [x] 申請 Hunter 帳號 → 已填 `HUNTER_API_KEY`(Free 方案 100 次驗證/月;
+      驗證於 pipeline 背景執行)
+- [x] 申請 Google Maps 金鑰 → 已填 `GOOGLE_MAPS_API_KEY`(Places 掃描實測可用,
+      匯入頁可自訂搜尋句)
 - [ ] 建 Calendly 活動(「TIHS 攤位會議 30 分鐘」)→ 填 `CALENDLY_URL`
 - [ ] **整理競品 Stockists 名單**(Fellow / Planetary Design 官網「Where to Buy」
       → CSV → 匯入):最高含金量的免費來源,見「名單來源指南」

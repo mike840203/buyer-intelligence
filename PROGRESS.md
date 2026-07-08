@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-07-07~08 州名化 + 來源歸因 + 資料治理 + 工具鏈全通
+
+1. **地區概念退場,UI 全面州名化**:50 州全名自動正規化為縮寫
+   (修掉 Apollo「Illinois」被歸 OTHER 的 bug);「地區」僅存於評分權重內部。
+2. **來源標籤系統**:CSV 匯入時自選來源(Apollo/LinkedIn/Stockists/IHA/手動),
+   名單列表顯示州+來源欄;pipeline 可依**州 × 來源**篩選(下拉附筆數)。
+   教訓:掃描城市由使用者當下指定,不依戰略文件自行展開(西雅圖事件)。
+3. **Google 地圖掃描進 Web UI**:匯入頁自訂搜尋句(「業態 in 城市, 州」);
+   GOOGLE_MAPS_API_KEY 實測可用(新金鑰有數分鐘生效延遲屬正常)。
+4. **Hunter 接通 + 驗證時機修正**:Free 100 次/月;驗證移至 pipeline L2 背景
+   (曾在匯入時同步驗證導致 UI 卡住逾一分鐘);手動改信箱/換人即時驗單筆。
+5. **資料品質防線(回應 Tim 對 Apollo 資料的疑慮)**:Hunter 攔無效信箱
+   (離職者信箱多半停用)+ 覆核頁/詳情頁「LinkedIn 在職查核」連結
+   (Google 搜尋合規查核,不爬蟲)+ 備援聯絡人一鍵切換。
+6. **資料治理**:主頁危險區「清空全部」(輸入 DELETE 雙重確認、任務中禁用、
+   保留 imports/)+ 單筆刪除(確認框)。
+7. **併發修復**:平行 pipeline 撞出 database is locked——根因是多 worker
+   同時初始化全新 checkpoints.db;修:建圖全程持鎖 + checkpoint 連線
+   timeout=30 + leads.db 開 WAL。壓測 6 執行緒同時初始化 0 錯誤。
+8. **claude CLI 斷鏈永久修復**:改裝獨立版(官方 install.sh 自我更新)+
+   config 解析加存在性驗證與 VSCode 擴充路徑自癒後備。
+9. `plan/` 併入 repo;四份文件(README/兩份 plan/本檔)同步至本節所有變更。
+   測試 18/18。
+
+---
+
 ## 2026-07-05(二)claude CLI 斷鏈修復(永久解法)
 
 - 症狀:pipeline 全批秒失敗「找不到 claude CLI」。

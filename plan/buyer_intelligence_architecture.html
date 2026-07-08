@@ -112,7 +112,11 @@ footer{margin-top:64px;padding:30px 0 48px;border-top:1px solid var(--line);font
       <tr><td>同公司多聯絡人</td><td>未規範</td><td class="ok">新增聯絡人優先序演算法 + 備援聯絡人機制</td></tr>
       <tr><td>寄信與追蹤</td><td>未規範</td><td class="ok">新增 .eml 輸出、mailto 一鍵寄信、track 六事件追蹤指令</td></tr>
       <tr><td>操作介面</td><td>CLI + 展中手機頁</td><td class="ok">全功能 Web UI(webui/):名單/覆核改稿/寄信/追蹤/匯入/背景 pipeline 全部網頁化;CLI 保留供腳本化,與 UI 共用 actions.py 業務層</td></tr>
-      <tr><td>批次效能</td><td>串行</td><td class="ok">pipeline 平行處理(預設 3 workers,約 3 倍),單筆失敗不拖垮整批</td></tr>
+      <tr><td>批次效能</td><td>串行</td><td class="ok">pipeline 平行處理(預設 3 workers,約 3 倍),單筆失敗不拖垮整批;SQLite 併發加固(建圖鎖 + WAL + 30s busy timeout)</td></tr>
+      <tr><td>批次篩選</td><td>全量執行</td><td class="ok">pipeline 可依<strong>州 × 來源</strong>篩選(UI 下拉附各項筆數);「地區」概念退居評分內部,UI 一律顯示州名(50 州全名自動正規化為縮寫)</td></tr>
+      <tr><td>來源追蹤</td><td>未規範</td><td class="ok">每筆名單帶來源標籤(Apollo / Google 地圖 / IHA / LinkedIn / 競品 Stockists / 手動 / 名片),CSV 匯入時自選;供各來源轉化率歸因</td></tr>
+      <tr><td>email 驗證時機</td><td>匯入時(同步)</td><td class="ok">移至 pipeline L2 背景(匯入秒進不卡 UI);手動改信箱/換主收件人時即時驗證單筆。Hunter Free(100 次/月)已接通</td></tr>
+      <tr><td>資料治理</td><td>未規範</td><td class="ok">清空全部(輸入 DELETE 雙重確認,任務執行中禁用)、單筆刪除(確認框)、LinkedIn 在職查核連結(寄信前人工確認,合規不爬蟲)</td></tr>
     </tbody>
   </table>
 </section>
@@ -152,7 +156,7 @@ footer{margin-top:64px;padding:30px 0 48px;border-top:1px solid var(--line);font
       <tr><td>信件批判審稿(扮演美國 buyer)</td><td><code>MODEL_TOP</code></td><td><code>claude-opus-4-8</code></td><td><code>opus</code>(<code>CLI_MODEL_TOP</code>;訂閱無 Opus 時設 <code>sonnet</code>)</td></tr>
     </tbody>
   </table>
-  <p class="note"><code>claude</code> 執行檔解析順序:<code>CLAUDE_CLI</code> 環境變數 → PATH → <code>~/.local/bin/claude</code>。認證:CLI 走 Claude Code 登入;API 走 <code>ANTHROPIC_API_KEY</code> 或 <code>ant auth login</code> profile。</p>
+  <p class="note"><code>claude</code> 執行檔解析順序(逐一驗證存在,斷掉的符號連結視同不存在):<code>CLAUDE_CLI</code> 環境變數 → PATH → <code>~/.local/bin/claude</code>(<strong>獨立版</strong>,官方 install.sh 安裝、自我更新)→ VSCode 擴充內建路徑自動搜尋(取最新,自癒後備)。教訓:勿以 VSCode 擴充資料夾做手工 symlink,擴充自動更新會斷鏈(2026-07-05 實際事故)。認證:CLI 走 Claude Code 登入;API 走 <code>ANTHROPIC_API_KEY</code> 或 <code>ant auth login</code> profile。</p>
 </section>
 
 <!-- 03 -->
@@ -223,6 +227,7 @@ notes 附加   ← industry(產業)、# employees(員工數)、email status(Apol
   <p><strong>全部聯絡人保留(不丟任何人):</strong>同公司其他聯絡人結構化存入 <code>alt_contacts</code>(姓名/職稱/email 完整保留);UI 詳情頁列出全部聯絡人,<strong>「設為主收件人」一鍵切換</strong>(原主收件人退為備選,換人自動重置 email 驗證旗標)——優先序演算法只決定預設值,收件人最終由人判斷。verbose 模式逐筆印「✂ 併入備選 …(同公司已保留 ○○○(職稱)——判定依據:…)」。</p>
   <h3>5.2 email 驗證(verify_email)</h3>
   <p><code>GET api.hunter.io/v2/email-verifier</code>;狀態 <code>valid / accept_all / webmail</code> 判定有效。未設金鑰或網路錯誤 → 標 <code>email_verified=False</code>,不阻擋流程(覆核時人工注意)。</p>
+  <p><strong>執行時機(v2 修正):</strong>在 <strong>pipeline L2 背景節點</strong>執行(enrich_lead 開頭),不在匯入時——同步逐筆打 API 曾使數十筆匯入卡住 UI 逾一分鐘;背景長工作多 1 秒/筆無感。例外:UI 手動修改信箱或切換主收件人時當場驗證該筆(~1 秒)。順序保證:驗證必發生於覆核寄信之前(pipeline → review)。</p>
   <h3>5.3 背景豐富(兩段式)</h3>
   <table>
     <thead><tr><th>步驟</th><th>模型</th><th>Prompt 規格</th><th>輸出</th></tr></thead>
@@ -231,7 +236,7 @@ notes 附加   ← industry(產業)、# employees(員工數)、email status(Apol
       <tr><td>extract_facts</td><td>Haiku(結構化)</td><td>從摘要抽欄位,不確定者留 null</td><td><code>EnrichmentFacts{store_count, sells_competitors, channel_type, revenue_band, summary}</code>;解析失敗保底 = 只留原摘要</td></tr>
     </tbody>
   </table>
-  <p>回填 Lead:<code>store_count / sells_competitors / enrichment_notes</code>。地區映射:WA,OR→PNW;TX→TX;CA→CA;NY,NJ,CT→NY;IL,WI,MI,MN,OH,IN→MIDWEST;其他→OTHER。</p>
+  <p>回填 Lead:<code>store_count / sells_competitors / enrichment_notes</code>。州別入庫時正規化為縮寫(50 州全名對照表,Apollo「Illinois」與 Places「IL」統一);地區僅供評分權重內部使用:WA,OR→PNW;TX→TX;CA→CA;NY,NJ,CT→NY;IL,WI,MI,MN,OH,IN→MIDWEST;其他→OTHER。<strong>UI 與篩選一律用州名。</strong></p>
 </section>
 
 <!-- 06 -->
@@ -292,9 +297,11 @@ notes 附加   ← industry(產業)、# employees(員工數)、email status(Apol
       <tr><td><code>GET /leads</code>、<code>GET /leads/{id}</code></td><td>名單列表(階段/分級篩選、關鍵字搜尋)與詳情頁:評分依據、背景情報、互動時間軸、<strong>全部聯絡人表(主收件人 + 備選,一鍵切換)</strong>、聯絡方式線上補正(換 email/換人自動重置驗證旗標)</td></tr>
       <tr><td><code>POST /leads/{id}/track</code></td><td>六事件追蹤按鈕(回信/會議/樣品/報價/PO/歸檔)→ 推進階段 + 自動排期</td></tr>
       <tr><td><code>GET /review</code>、<code>POST /review/{id}/approve|reject</code></td><td>覆核佇列:草稿<strong>線上直接改稿</strong>後核准 → 輸出 .eml + 顯示「📮 開啟郵件寄出」mailto 按鈕;或退回清稿</td></tr>
-      <tr><td><code>GET|POST /import</code></td><td>CSV 上傳(Apollo 格式自動識別),去重明細與統計即時顯示,檔案留存 imports/</td></tr>
-      <tr><td><code>GET /pipeline</code>、<code>POST /pipeline/start</code>、<code>GET /jobs/status</code></td><td>背景執行(可關頁),前端每 2 秒輪詢任務日誌;參數:筆數上限、平行數(1–5)</td></tr>
+      <tr><td><code>GET|POST /import</code>、<code>POST /scan</code></td><td>① CSV 上傳(Apollo 格式自動識別、<strong>自選來源標籤</strong>、秒進不卡)② <strong>Google 地圖掃描</strong>(自訂搜尋句「業態 in 城市, 州」);去重明細與統計即時顯示,CSV 留存 imports/</td></tr>
+      <tr><td><code>GET /pipeline</code>、<code>POST /pipeline/start</code>、<code>GET /jobs/status</code></td><td>背景執行(可關頁),前端每 2 秒輪詢任務日誌;參數:<strong>州 × 來源</strong>(下拉附各項筆數)、筆數上限、平行數(1–5)</td></tr>
       <tr><td><code>POST /followup/start</code></td><td>展中每晚批次:met_at_show 全員生成 same-day follow-up 進覆核佇列</td></tr>
+      <tr><td><code>GET|POST /wipe</code></td><td>清空全部資料:確認頁明列刪除範圍(名單/checkpoints/outbox,保留 imports/),<strong>須輸入大寫 DELETE</strong> 才執行;背景任務中禁用</td></tr>
+      <tr><td><code>POST /leads/{id}/delete</code></td><td>單筆刪除(前端確認框);<code>POST /leads/{id}/primary/{idx}</code> 切換主收件人並即時重驗 email</td></tr>
       <tr><td><code>GET|POST /card</code>、<code>POST /card/note/{id}</code></td><td>名片掃描(手機):OCR → 庫內比對(預約客戶 vs 新接觸)→ 建檔 stage=met_at_show、排隔日跟進 → 即時 company brief + 會談紀錄</td></tr>
     </tbody>
   </table>
@@ -358,7 +365,8 @@ thread_id = <span class="st">f"lead-{id}"</span>          <span class="cm"># 斷
   <ul>
     <li>L1 ingest 在 CLI/Web UI 批次執行,graph 為單筆 lead(fan-out 語意等價於 v1 設計)</li>
     <li>每個節點結束同步寫回 leads.db——覆核佇列與看板隨時反映最新狀態</li>
-    <li><code>prepare_batch(limit)</code>(CLI 與 UI 共用):有 pending_draft 者跳過(不重跑不覆蓋);T3 直接歸檔不進圖</li>
+    <li><code>prepare_batch(limit, state, source)</code>(CLI 與 UI 共用):可依州與來源篩選本批;有 pending_draft 者跳過(不重跑不覆蓋);T3 直接歸檔不進圖</li>
+    <li><strong>SQLite 併發安全</strong>:build_graph 全程持鎖(checkpoint 建表/WAL 設定不可並行——曾致 database is locked);checkpoint 連線 timeout=30;leads.db 開 WAL 模式允許讀寫並行</li>
     <li><code>run_pipeline(leads, workers=3, on_message)</code>:ThreadPoolExecutor 平行處理(每 worker 自建 graph 與 checkpoint 連線);單筆失敗記日誌不中斷整批;進度訊息經回呼導向 stdout(CLI)或任務日誌(UI)</li>
   </ul>
 </section>
@@ -373,7 +381,7 @@ thread_id = <span class="st">f"lead-{id}"</span>          <span class="cm"># 斷
       <tr><td><code>serve</code></td><td><code>--port</code>(預設 8000)</td><td><strong>啟動 Web UI(建議的日常入口)</strong>;手機名片掃描:http://&lt;IP&gt;:8000/card</td></tr>
       <tr><td><code>init</code></td><td>—</td><td>建立資料庫</td></tr>
       <tr><td><code>ingest</code></td><td><code>--source apollo|places|iha|manual</code>、<code>--query</code>、<code>--file</code>、<code>--tier</code></td><td>L1 擷取 + L2 去重/驗證;逐筆印轉備援與略過原因</td></tr>
-      <tr><td><code>pipeline</code></td><td><code>--limit N</code>、<code>--workers N</code>(預設 3 平行)</td><td>L2 豐富 → L3 評分 → L4 產信入佇列;自動跳過待覆核與 T3;單筆失敗不中斷</td></tr>
+      <tr><td><code>pipeline</code></td><td><code>--limit N</code>、<code>--workers N</code>(預設 3)、<code>--state IL</code>、<code>--source apollo</code></td><td>L2 豐富 → L3 評分 → L4 產信入佇列;可依州/來源篩選;自動跳過待覆核與 T3;單筆失敗不中斷</td></tr>
       <tr><td><code>review</code></td><td>—(互動式)</td><td>逐封覆核:y 核准出 .eml / n 退回 / s 跳過</td></tr>
       <tr><td><code>send</code></td><td><code>id</code></td><td>mailto 開啟郵件軟體,收件人/主旨/內文帶好</td></tr>
       <tr><td><code>track</code></td><td><code>id</code>、<code>replied|meeting|sample|quote|po|dead</code>、<code>--note</code></td><td>推進階段 + 自動排下次行動日</td></tr>
