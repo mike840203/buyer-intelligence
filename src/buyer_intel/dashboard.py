@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from . import db
+from .company import get_company
 from .config import DASHBOARD_PATH
 from .models import Lead
 
@@ -49,8 +50,9 @@ def render() -> str:
         _lead_row(l) for l in sorted(active, key=lambda x: (x.grade or "Z", x.company))
     ) or "<tr><td colspan='7'>資料庫為空,先執行 ingest。</td></tr>"
 
+    company = get_company().name
     return f"""<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">
-<title>Ankomn Buyer Pipeline</title>
+<title>{company} Buyer Pipeline</title>
 <style>
 body{{font-family:sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#22261F}}
 h1{{color:#143D30}} h2{{margin-top:36px}}
@@ -62,7 +64,7 @@ th{{background:#143D30;color:#fff;text-align:left;padding:8px 12px}}
 td{{padding:8px 12px;border-bottom:1px solid #DDDACF}}
 .warn th{{background:#8A3B22}}
 </style></head><body>
-<h1>Ankomn Buyer Pipeline — {date.today().isoformat()}</h1>
+<h1>{company} Buyer Pipeline — {date.today().isoformat()}</h1>
 <div class="funnel">{funnel_cells}</div>
 <h2>⚠️ 逾期未跟進({len(overdue)})</h2>
 <table class="warn"><tr><th>公司</th><th>聯絡人</th><th>Tier</th><th>地區</th>

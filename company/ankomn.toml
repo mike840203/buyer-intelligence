@@ -1,0 +1,38 @@
+# 公司 Profile — 單一事實來源。
+#
+# 今天是 Ankomn,明天可以是塑膠代工:複製這個檔、改內容即可,程式碼一行都不用動。
+# outreach(寫信)/ footer(合規)/ enrich(背景研究)/ scoring(通路契合)/ brief(攤位攻略)
+# 全部從這裡讀。要換公司,設環境變數 COMPANY_PROFILE=company/<你的公司>.toml 指向新檔。
+
+[company]
+name = "Ankomn"
+# 給 AI 認識你的公司(繁中即可;enrich / scoring / brief 用)
+description = "台灣真空保鮮罐品牌,做專利手搖真空食品保鮮罐(台灣設計製造),主打咖啡豆與乾貨保鮮"
+# 英文一句話價值主張(寫信正文用,務必英文)
+value_proposition = "Ankomn makes patented crank-vacuum food storage containers (designed and made in Taiwan) that keep coffee beans and dry goods fresh 3-5x longer than one-way-valve canisters - no pumps, no batteries, a twist of the lid pulls a vacuum."
+industry = "vacuum food-storage containers"
+website = "https://www.ankomn.com"
+
+[sender]
+# 簽名檔與 CAN-SPAM footer 用。address 是法規必填欄位(美國 CAN-SPAM 要求真實實體地址)。
+name = "The Ankomn Team"
+title = ""
+email = "mike.chen.test01@gmail.com"   # 寄件信箱(之後 Gmail OAuth 用同一帳號授權)
+phone = "+886-2-2609-8699"
+# 來源:ankomn.tw 官網 footer(因益達科技有限公司,新北市林口區頂福2號之2)
+address = "No. 2-2, Dingfu, Linkou Dist., New Taipei City 244, Taiwan"
+
+[campaign]
+# 觸發場景。type=trade_show 時信中帶攤位 + 預約連結;type=general 則純開發信、不帶展會資訊。
+type = "trade_show"                    # trade_show | general
+name = "The Inspired Home Show 2027"
+detail = "Chicago, March 9-11"
+booth = "Clean + Contain zone, booth TBD"
+booking_url = ""                       # Calendly 連結(選填)
+
+[targeting]
+# 目標買家輪廓——enrich 背景研究與 scoring 通路契合判斷會引用。換產業就改這幾行。
+channel_priority = "specialty coffee gear retail > kitchenware specialty > general retail"
+competitors = ["Fellow Atmos", "Planetary Design", "Airscape", "OXO POP"]
+# 同公司多聯絡人時,職稱含這些字的「品類對口買手」優先保留為主收件人
+category_keywords = ["hardgood", "housewares", "home", "kitchen", "coffee", "seasonal", "decor", "tabletop", "gourmet"]

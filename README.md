@@ -3,8 +3,12 @@
 支援 **The Inspired Home Show 2027(芝加哥,3/9–3/11)** 參展的全週期 B2B 買家開發系統:
 **展前找買家 → 展中管理接觸 → 展後自動跟進**。
 
-本 repo 是 [`plan/buyer_intelligence_architecture.html`](plan/buyer_intelligence_architecture.html) 的實作;
-商業脈絡見 [`plan/ankomn_strategy_report.html`](plan/ankomn_strategy_report.html)。
+本 repo 是 [`plan/buyer_intelligence_architecture.html`](plan/buyer_intelligence_architecture.html)(系統規格書 v3)的實作;
+商業脈絡見 [`plan/ankomn_strategy_report.html`](plan/ankomn_strategy_report.html)(計劃書 Final v3)。
+**正式上線前必讀:[`docs/README.md`《上線作戰手冊》](docs/README.md)** —— 寄達率
+(為什麼信會進垃圾桶、怎麼養 Gmail/網域)、上線前總 checklist、技術債 roadmap。
+**給非技術操作者:[`docs/操作手冊.md`](docs/操作手冊.md)** —— 每天按哪些按鈕、
+買家回信後怎麼接手、紅字警示對照表,全程只需瀏覽器。
 
 ## 系統架構(五層 Pipeline)
 
@@ -13,9 +17,14 @@
 | L1 資料擷取 | `adapters/` | Apollo / Google Places / IHA 名錄 / CSV 匯入,統一產出 `RawLead` | — |
 | L2 清洗豐富 | `enrich.py` | 去重(rapidfuzz 模糊比對 + email domain)、Hunter 驗證、web 搜尋背景補全 | Sonnet 搜尋 + Haiku 抽取 |
 | L3 評分分級 | `scoring.py` | 規則基礎分 + LLM 契合度判斷,加權後分 A/B/C;C 級自動歸檔 | Sonnet |
-| L4 觸達引擎 | `outreach.py` | 個人化信件生成 → Opus 扮演美國 buyer 批判 → 重寫迴圈(≤3 輪)→ 人工覆核 | Sonnet 寫 + Opus 審 |
+| L4 觸達引擎 | `outreach.py` | 三輪信生成(seq1 觸達 + seq2 價值 + seq3 收尾)→ Opus 扮演美國 buyer 批判 → 重寫迴圈(≤3 輪)→ 人工覆核 | Sonnet 寫 + Opus 審 |
 | L5 展中作戰 | `field_ops/`、`webui/` | 名片 OCR、即時 company brief、same-day follow-up、pipeline 看板 | Haiku + Sonnet |
-| 操作介面 | `webui/`(主)、`cli.py` | 全功能 Web UI:名單/覆核改稿/一鍵寄信/追蹤/匯入/背景 pipeline | — |
+| **L6 送後引擎** | `sending/` | 核准後全自動:三輪排程(+0/+4/+6 工作日)、warmup 限流、一次寄 1 封、CAN-SPAM footer、回覆自動煞車、退訂/bounce 防線;後端 eml 乾跑或 Gmail API | — |
+| 操作介面 | `webui/`(主)、`cli.py` | 全功能 Web UI:名單/覆核改稿/寄送佇列監控/追蹤/匯入/背景 pipeline | — |
+
+**通用化**:公司身分(價值主張、寄件人、campaign、競品)全部在
+[`company/ankomn.toml`](company/ankomn.toml) —— 今天 Ankomn、明天換任何產業,
+複製一份 toml 改內容、設 `COMPANY_PROFILE` 指過去即可,程式碼一行不用動。
 
 流程編排使用 **LangGraph**(`graph.py`):條件邊依評分分流、critique 迴圈退回重寫、
 SQLite checkpoint 讓批次中斷後可續跑不重花 API 費用。
@@ -112,10 +121,27 @@ graph TD;
 
 ### 兩條鐵律
 
-1. **Human-in-the-loop**:系統只產草稿,**絕不直接寄信**。核准後的信件輸出到
-   `outbox/`,由人工用郵件軟體寄出 —— B2B 信任是資產,不容 AI 幻覺揮霍。
+1. **Human-in-the-loop 閘門**:系統只產草稿,**人工審核核准後才進入自動寄送**。
+   覆核頁一次看整串三封(seq1/2/3 皆可改稿),按一次「核准」→ 排入寄送佇列
+   → 排程器到期自動寄 → 對方回信自動取消剩餘跟進。閘門不動,只有「送出的手」
+   自動化 —— B2B 信任是資產,不容 AI 幻覺未經人眼就觸達買家。
+   (預設 `SENDING_BACKEND=eml` 乾跑:到期輸出 .eml 由人寄;
+   Gmail 憑證與網域準備好後切 `gmail` 全自動,見 [docs/gmail.md](docs/gmail.md))
 2. **Rep Group(T0)走獨立通道**:不套零售商評分模型,直接進觸達並以
    代理合作(而非批發採購)角度撰寫信件。
+
+### L6 防風控節奏(對照 exportlab-outreach 的 failsafe 設計)
+
+| 防線 | 內容 |
+|---|---|
+| Warmup 每日上限 | 前 2 週 2 封/天,之後 5 封/天(起算日=第一封實際寄出日) |
+| 一次只寄 1 封 | 排程器每輪只寄最早到期那封,批次爆寄是最典型的機器訊號 |
+| Interval 錯開 | 同日排程自動錯開 60–90 分鐘 + 全域節奏護欄(距上封未滿 60 分不寄) |
+| 寄信時段 | 只在 buyer 當地(依州別換算時區)工作日 09:30–16:30,跳過美國聯邦假日 |
+| 3 封上限 + 回覆煞車 | 同一收件人最多 3 封;任何回應(UI 按鈕或 Gmail thread 偵測)即取消剩餘 |
+| 合規 footer | CAN-SPAM:寄件人實體地址 + reply UNSUBSCRIBE(10 個工作日內處理) |
+| 退訂/bounce 防線 | 退訂名單寄前必查(清空資料也不會刪);同網域 3 次失敗自動整域退訂 |
+| 不謊報 | 拿到 message id 才標 sent;失敗標 failed 進日誌 |
 
 ## 安裝
 
@@ -167,7 +193,9 @@ buyer-intel serve        # 然後瀏覽器開 http://localhost:8000
 所有操作都在網頁完成:
 
 - **儀表板**:漏斗+逾期警示+背景任務狀態;底部「危險區」可**清空全部資料**
-  (需輸入 `DELETE` 雙重確認,任務執行中會鎖住)
+  (需輸入 `DELETE` 雙重確認,任務執行中會鎖住;退訂名單不會被清)
+- **寄送佇列(/outbox)**:L6 監控中心——今日用量/warmup 階段、排程中明細
+  (可單封取消)、排程器即時日誌、暫停/恢復自動寄送、手動跑一輪、退訂名單管理
 - **名單**:階段/分級篩選、搜尋;列表顯示**州**與**來源**欄;詳情頁含
   全部聯絡人表(同公司**全部保留**,一鍵切換主收件人)、**LinkedIn 在職查核**
   連結(寄信前 30 秒人工確認)、**單筆刪除**(跳確認框)
@@ -195,10 +223,13 @@ buyer-intel ingest --source iha --file iha_exhibitors.csv --tier T0_rep    # IHA
 # 2. L2–L4 全流程:豐富 → 評分 → 信件草稿 → 覆核佇列
 buyer-intel pipeline --limit 20 --state IL --source apollo  # 州/來源/筆數皆可篩
 
-# 3. 人工覆核:逐筆看草稿,核准後輸出 outbox/ 由人工寄送
+# 3. 人工覆核:逐筆看三輪草稿,核准整串 → 排入寄送佇列
 buyer-intel review
 
-# 4. 看板:漏斗視圖 + 逾期未跟進警示
+# 4. 手動跑一輪寄送排程器(Web UI 開著時背景自動輪詢,不用手動)
+buyer-intel dispatch
+
+# 5. 看板:漏斗視圖 + 逾期未跟進警示
 buyer-intel dashboard && open dashboard.html
 ```
 
@@ -294,27 +325,36 @@ Clay / n8n 之類自動化平台(本系統就是你的 Clay,月費 $0)。
 
 ```
 buyer-intelligence/
+├── company/                 # ★ 公司 profile(通用化的單一事實來源;換公司改這裡)
+│   └── ankomn.toml          #   寄件人/價值主張/campaign/競品
 ├── src/buyer_intel/
-│   ├── config.py            # 模型分工、評分權重、路徑(單一事實來源)
-│   ├── models.py            # Pydantic:Lead / RawLead / Interaction 等
-│   ├── db.py                # SQLite 單檔存取(data/leads.db)
+│   ├── config.py            # 模型分工、評分權重、L6 寄送節奏、路徑
+│   ├── company.py           # 公司 profile 載入層(COMPANY_PROFILE 可切換)
+│   ├── models.py            # Pydantic:Lead / RawLead / QueuedEmail 等
+│   ├── db.py                # SQLite 存取(leads + email_queue + unsubscribed)
 │   ├── llm.py               # Anthropic client 共用工具(含 pause_turn 處理)
 │   ├── adapters/            # L1:apollo / places / iha / manual
 │   ├── enrich.py            # L2:去重、email 驗證、web 搜尋豐富
 │   ├── scoring.py           # L3:混合式評分與分級
-│   ├── outreach.py          # L4:draft → critique → rewrite + follow-up
+│   ├── outreach.py          # L4:三輪信生成 → critique → rewrite + follow-up
+│   ├── sending/             # ★ L6 送後引擎
+│   │   ├── schedule.py      #   工作日/假日/時區/時段排程(純函式)
+│   │   ├── footer.py        #   CAN-SPAM 合規 footer(純函式)
+│   │   ├── sequence.py      #   核准 → 三輪信入佇列(+0/+4/+6 工作日)
+│   │   ├── dispatcher.py    #   warmup 限流 + 一次寄 1 封 + 守門/煞車
+│   │   └── gmail.py         #   Gmail API 後端 + thread 回覆偵測(選用)
 │   ├── graph.py             # LangGraph 編排 + SQLite checkpoint + prepare_batch
-│   ├── actions.py           # 共用業務動作(核准/退回/寄信/track,CLI 與 UI 共用)
-│   ├── webui/               # ★ Web UI:app.py(全部頁面)+ jobs.py(背景任務)
+│   ├── actions.py           # 共用業務動作(核准/退回/track,CLI 與 UI 共用)
+│   ├── webui/               # ★ Web UI:app.py(頁面)+ jobs.py + scheduler.py(背景寄送)
 │   ├── field_ops/           # L5:ocr.py(名片)/ brief.py(攻略)
 │   ├── dashboard.py         # 靜態看板 HTML(Web UI 首頁為即時版)
-│   └── cli.py               # buyer-intel 指令入口(serve 啟動 Web UI)
-├── plan/                    # 兩份正式文件:最終計劃書 + 系統規格書(HTML)
-├── docs/                    # 外部工具指南(Apollo / Hunter / Google Maps)
-├── tests/                   # 規則評分與去重的單元測試(不需 API 金鑰)
+│   └── cli.py               # buyer-intel 指令入口(serve / dispatch / review …)
+├── plan/                    # 兩份正式文件:最終計劃書 v3 + 系統規格書 v3(HTML)
+├── docs/                    # ★ 上線作戰手冊(README)+ 外部工具指南(Apollo/Hunter/Maps/Gmail)
+├── tests/                   # 規則邏輯單元測試(評分/去重/排程/footer/dispatcher)
 ├── examples/seed_leads.csv  # 種子名單範例(T1 咖啡器材電商)
 ├── imports/                 # 匯入的名單 CSV(git 忽略,含個資)
-├── outbox/                  # 核准信件 .eml(git 忽略)
+├── outbox/                  # eml 乾跑模式輸出的信件檔(git 忽略)
 ├── PROGRESS.md              # 專案日誌(新條目往上加)
 └── data/                    # leads.db / checkpoints.db(git 忽略)
 ```
@@ -367,8 +407,11 @@ pytest        # 純規則邏輯,不呼叫 API、不需金鑰
 ### 中期:名單開發期(2026-09 → 12,對應 M2–M3)
 
 - [ ] **寄信基礎設施(L4 成敗的最大實務風險)**:購買專用寄信網域(勿用主網域)、
-      設定 SPF/DKIM/DMARC、網域暖機 4–6 週後才開始正式 outreach
-- [ ] **CAN-SPAM 合規**:信尾加公司實體地址與退訂機制
+      設定 SPF/DKIM/DMARC、網域暖機 4–6 週後才開始正式 outreach;
+      完成後把 `SENDING_BACKEND` 切 `gmail`(OAuth 申請見 docs/gmail.md)
+- [x] **CAN-SPAM 合規**:L6 自動附合規 footer(實體地址 + reply UNSUBSCRIBE);
+      **尚缺:company/ankomn.toml 的 sender.address 要填真實英文地址**
+- [x] 三輪自動跟進 + 回覆煞車 + warmup 限流(L6 送後引擎,2026-07 完成)
 - [ ] 開信/回覆追蹤:量大時評估 Instantly / Smartlead 等寄送服務 API
 - [ ] Apollo 升級付費方案(免費 tier 對 email export 有限制)
 - [ ] IHA 名錄取得後接入 `iha` adapter,建立 T0 Rep Group 名單

@@ -64,6 +64,11 @@ def node_score(state: LeadState) -> dict:
     if lead.score is not None and lead.grade:
         return {"lead": _dump(lead)}
     lead = score_lead(lead)
+    # 補聯絡人:僅對「過關(A/B)+ 缺 email + 有網站」者用 Hunter 反查——
+    # 省額度(C 級/T3 已歸檔不碰),放評分後才知道值不值得花這次查詢
+    if lead.grade in ("A", "B") and not lead.email and lead.website:
+        from .enrich import backfill_contacts
+        lead = backfill_contacts(lead)
     db.save_lead(lead)
     return {"lead": _dump(lead)}
 
@@ -157,6 +162,12 @@ def prepare_batch(
 
     messages: list[str] = []
     leads = db.list_leads(stage="new")
+    # 測試 lead(🧪 開頭,寄測試信功能建立的)不進 pipeline:
+    # 對不存在的公司做網路研究只會浪費額度
+    test_leads = [l for l in leads if l.company.startswith("🧪")]
+    if test_leads:
+        messages.append(f"跳過 {len(test_leads)} 筆 🧪 測試 lead(不跑研究/寫信)")
+    leads = [l for l in leads if not l.company.startswith("🧪")]
     if state:
         before = len(leads)
         leads = [l for l in leads if (l.state or "").upper() == state.upper()]

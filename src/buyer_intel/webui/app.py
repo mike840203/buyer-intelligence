@@ -20,9 +20,15 @@ from ..adapters import ManualAdapter
 from ..config import ROOT
 from ..enrich import dedupe, to_lead
 from ..models import Interaction, Lead
-from . import jobs
+from . import jobs, scheduler
 
-app = FastAPI(title="Ankomn Buyer Intelligence")
+app = FastAPI(title="Buyer Intelligence")
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    db.init_db()
+    scheduler.start_background()   # 背景寄送排程器:UI 開著就會自動派送到期信
 
 IMPORTS_DIR = ROOT / "imports"
 
@@ -106,11 +112,17 @@ small.hint{color:var(--muted);}
 """
 
 
+def _brand() -> str:
+    from ..company import get_company
+    return get_company().name.upper()
+
+
 def page(title: str, body: str, active: str = "", flash: str = "",
          flash_err: str = "") -> HTMLResponse:
     nav_items = [
         ("/", "儀表板"), ("/leads", "名單"), ("/review", "覆核佇列"),
-        ("/import", "匯入名單"), ("/pipeline", "Pipeline"), ("/card", "名片掃描"),
+        ("/outbox", "寄送佇列"), ("/import", "匯入名單"), ("/pipeline", "Pipeline"),
+        ("/card", "名片掃描"),
     ]
     nav = "".join(
         f'<a href="{href}" class="{"on" if href == active else ""}">{label}</a>'
@@ -124,7 +136,7 @@ def page(title: str, body: str, active: str = "", flash: str = "",
     return HTMLResponse(f"""<!DOCTYPE html><html lang="zh-Hant"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(title)} · Buyer Intel</title><style>{_CSS}</style></head><body>
-<header><div class="wrap"><div class="logo">ANKOMN · Buyer Intel</div><nav>{nav}</nav></div></header>
+<header><div class="wrap"><div class="logo">{e(_brand())} · Buyer Intel</div><nav>{nav}</nav></div></header>
 <div class="wrap">{notice}{body}</div></body></html>""")
 
 
@@ -182,6 +194,7 @@ def home(wiped: int = 0):
     active = [l for l in leads if l.stage != "archived"]
     overdue = db.overdue_leads()
     pending = [l for l in leads if l.pending_draft]
+    ready_count = len(db.list_queue(status="ready"))
 
     funnel = "".join(
         f'<div class="stat"><b>{sum(1 for l in active if l.stage == s)}</b>'
@@ -196,10 +209,11 @@ def home(wiped: int = 0):
 <div class="cards">{funnel}</div>
 <div class="row">
   <a class="btn" href="/review">✉️ 覆核佇列({len(pending)})</a>
+  <a class="btn gold" href="/outbox">📤 寄送佇列({ready_count} 排程中)</a>
   <a class="btn sec" href="/pipeline">▶ 執行 Pipeline</a>
   <a class="btn sec" href="/import">⬆ 匯入名單</a>
   <form class="inline" method="post" action="/followup/start">
-    <button class="btn gold" type="submit">🌙 生成展中 follow-up 草稿</button>
+    <button class="btn sec" type="submit">🌙 生成展中 follow-up 草稿</button>
   </form>
 </div>
 <h2>⚠️ 逾期未跟進({len(overdue)})</h2>
@@ -244,12 +258,13 @@ def leads_list(stage: str = "", grade: str = "", q: str = ""):
     body = f"""
 <h1>名單({len(leads)} 筆)</h1>
 <form method="get" class="row">
-  <select name="stage">{stage_opts}</select>
-  <select name="grade">{grade_opts}</select>
-  <input name="q" value="{e(q)}" placeholder="搜尋公司或聯絡人">
+  <select name="stage" onchange="this.form.submit()">{stage_opts}</select>
+  <select name="grade" onchange="this.form.submit()">{grade_opts}</select>
+  <input name="q" value="{e(q)}" placeholder="搜尋公司或聯絡人(按 Enter)">
   <button class="btn" type="submit">篩選</button>
   <a class="btn sec" href="/leads">清除</a>
 </form>
+{f'<p><small class="hint">目前篩選:{STAGE_LABELS.get(stage, "")} {f"{grade} 級" if grade else ""} {f"關鍵字「{e(q)}」" if q else ""} — 共 {len(leads)} 筆符合</small></p>' if (stage or grade or q) else ''}
 <table>{LEAD_TABLE_HEAD}{rows}</table>"""
     return page("名單", body, active="/leads")
 
@@ -267,9 +282,15 @@ def lead_detail(lead_id: int, ok: str = ""):
         for ev, label in TRACK_LABELS.items()
     )
     mailto = actions.mailto_url(lead)
+    queued = db.list_queue(lead_id=lead_id) if lead.id else []
+    ready_q = [q for q in queued if q.status == "ready"]
     send_block = ""
     if lead.pending_draft:
         send_block = f'<p>✉️ 有待覆核草稿 → <a class="btn gold" href="/review#lead-{lead.id}">前往覆核</a></p>'
+    elif ready_q:
+        plan = "、".join(f"seq{q.sequence_no} {q.scheduled_at:%m/%d %H:%M}" for q in ready_q)
+        send_block = (f'<p>⏳ 已排程 {len(ready_q)} 封:{plan} '
+                      f'<a class="btn sec" href="/outbox">寄送佇列 →</a></p>')
     elif mailto:
         send_block = f'<p><a class="btn" href="{mailto}">📮 開啟郵件草稿寄信</a> <small class="hint">(在你的郵件軟體開啟,按下寄出即可)</small></p>'
     elif actions.latest_sent_email(lead) and not lead.email:
@@ -401,19 +422,37 @@ def lead_contact(lead_id: int, contact_name: str = Form(""),
 # ─────────────────────────── 覆核佇列 ───────────────────────────
 
 @app.get("/review", response_class=HTMLResponse)
-def review(approved: int = 0):
+def review(approved: int = 0, err: str = "", msg: str = ""):
     pending = [l for l in db.all_leads() if l.pending_draft]
-    flash = ""
+    flash = msg or ""
     if approved:
         lead = db.get_lead(approved)
         if lead:
-            mailto = actions.mailto_url(lead)
-            link = (f' <a class="btn" href="{mailto}">📮 立即開啟郵件寄出</a>'
-                    if mailto else "(此筆缺 email,補上後可寄)")
-            flash = f"✅ 已核准「{e(lead.company)}」,信件已輸出 outbox/。{link}"
+            queued = db.list_queue(lead_id=approved)
+            plan = "、".join(f"seq{q.sequence_no} {q.scheduled_at:%m/%d %H:%M}"
+                             for q in queued if q.status == "ready")
+            flash = (f"✅ 已核准「{e(lead.company)}」整串,排入寄送佇列:{plan} "
+                     f'<a class="btn sec" href="/outbox">查看寄送佇列 →</a>')
 
     cards = ""
     for lead in pending:
+        is_test = lead.company.startswith("🧪")
+        followup_boxes = ""
+        if lead.pending_followups:
+            for i, fu in enumerate(lead.pending_followups):
+                seq = i + 2
+                if is_test:
+                    off = f"+{2 if seq == 2 else 4} 分鐘(測試壓縮;真實為 +{4 if seq == 2 else 6} 工作日)"
+                else:
+                    off = "+4 工作日" if seq == 2 else "+6 工作日"
+                followup_boxes += (
+                    f'<p style="margin:10px 0 4px"><b>跟進信 seq{seq}</b> '
+                    f'<span class="chip">{off},對方回信會自動取消</span></p>'
+                    f'<textarea name="followup{seq}" rows="8">{e(fu)}</textarea>')
+        else:
+            followup_boxes = ('<p><small class="hint">⚠ 此筆沒有預生成跟進信'
+                              '(舊資料),核准只會排 seq1;重跑 pipeline 可得三輪。'
+                              '</small></p>')
         cards += f"""
 <div class="card" id="lead-{lead.id}">
   <h2 style="margin-top:0"><a href="/leads/{lead.id}">{e(lead.company)}</a>
@@ -423,9 +462,11 @@ def review(approved: int = 0):
     {linkedin_check_link(lead.contact_name, lead.company)}</h2>
   <div class="rationale">{e(lead.score_rationale or '')}</div>
   <form method="post" action="/review/{lead.id}/approve">
+    <p style="margin:4px 0"><b>第一封 seq1</b> <span class="chip">核准後排最近的寄信時段</span></p>
     <textarea name="draft" rows="12">{e(lead.pending_draft or '')}</textarea>
+    {followup_boxes}
     <div class="row" style="margin-top:10px">
-      <button class="btn" type="submit">✅ 核准(可先直接修改上方內文)</button>
+      <button class="btn" type="submit">✅ 核准整串(三封都可先改;按一次管到底)</button>
     </div>
   </form>
   <form method="post" action="/review/{lead.id}/reject" class="inline">
@@ -435,14 +476,21 @@ def review(approved: int = 0):
     if not cards:
         cards = '<div class="card">佇列是空的。到 <a href="/pipeline">Pipeline</a> 頁跑新名單。</div>'
     body = f"<h1>覆核佇列({len(pending)} 封)</h1>{cards}"
-    return page("覆核佇列", body, active="/review", flash=flash)
+    return page("覆核佇列", body, active="/review", flash=flash, flash_err=err)
 
 
 @app.post("/review/{lead_id}/approve")
-def review_approve(lead_id: int, draft: str = Form(...)):
+def review_approve(lead_id: int, draft: str = Form(...),
+                   followup2: str = Form(""), followup3: str = Form("")):
     lead = db.get_lead(lead_id)
     if lead and lead.pending_draft:
-        actions.approve_draft(lead, edited_draft=draft)
+        followups = [f for f in (followup2, followup3) if f.strip()]
+        try:
+            actions.approve_draft(lead, edited_draft=draft,
+                                  edited_followups=followups)
+        except ValueError as exc:
+            from urllib.parse import quote
+            return RedirectResponse(f"/review?err={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/review?approved={lead_id}", status_code=303)
 
 
@@ -452,6 +500,256 @@ def review_reject(lead_id: int):
     if lead:
         actions.reject_draft(lead)
     return RedirectResponse("/review", status_code=303)
+
+
+# ─────────────────────────── 寄送佇列(L6) ───────────────────────────
+
+QUEUE_STATUS_LABELS = {"ready": "⏳ 排程中", "sent": "✅ 已寄出",
+                       "cancelled": "⏭ 已取消", "failed": "✘ 失敗"}
+
+
+@app.get("/outbox", response_class=HTMLResponse)
+def outbox(msg: str = "", err: str = ""):
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from ..config import (DAILY_LIMIT_NORMAL, ENABLE_COMPLIANCE_FOOTER,
+                          FALLBACK_TIMEZONE, SENDING_BACKEND, WARMUP_WEEKS)
+    from ..sending import dispatcher
+    from ..sending.footer import address_ready
+
+    now = datetime.now(timezone.utc)
+    tz = ZoneInfo(FALLBACK_TIMEZONE)
+    limit, label = dispatcher.daily_limit(now.astimezone(tz).date())
+    used = dispatcher.sent_today(now)
+    queue = db.list_queue()
+    ready = [q for q in queue if q.status == "ready"]
+    nxt = db.earliest_future_ready(now)
+    due_now = [q for q in ready if q.scheduled_at <= now]
+    paused = scheduler.is_paused()
+
+    backend_chip = ("🟡 eml 乾跑(輸出 .eml 由人寄;安全模式)"
+                    if SENDING_BACKEND == "eml" else "🟢 Gmail 自動寄送")
+    addr_warn = ""
+    if ENABLE_COMPLIANCE_FOOTER and not address_ready():
+        addr_warn = ('<div class="flash err">⚠ company profile 的 sender.address '
+                     '還沒填真實地址——CAN-SPAM 必填。信件 footer 目前帶著提示佔位字;'
+                     'Gmail 自動寄送會被擋下。請編輯 company/*.toml。</div>')
+    from ..sending.schedule import HOLIDAY_YEARS
+    check_years = {now.year} | {q.scheduled_at.year for q in ready}
+    missing_years = sorted(check_years - HOLIDAY_YEARS)
+    if missing_years:
+        addr_warn += (f'<div class="flash err">⚠ 假日表缺 {missing_years} 年資料'
+                      f'(內建 {sorted(HOLIDAY_YEARS)}):排程可能踩到美國假日。'
+                      '請更新 sending/schedule.py 的 _US_HOLIDAYS_RAW。</div>')
+
+    lead_stage = {l.id: l.stage for l in db.all_leads()}
+    _REPLY_CHIPS = {"followed_up": " 📩 對方已回信", "meeting_booked": " 📅 已約會議",
+                    "archived": " 🚫 已退訂/歸檔"}
+    rows = ""
+    for q in queue:
+        local = q.scheduled_at   # 儲存時即為 buyer 當地時間(帶 offset)
+        overdue = (' <span class="overdue">到期</span>'
+                   if q.status == "ready" and q.scheduled_at <= now else "")
+        # 已寄出的信,補顯示對方後續動態(回信/退訂由偵測或 track 事件推進)
+        reply_chip = ""
+        if q.status == "sent":
+            chip = _REPLY_CHIPS.get(lead_stage.get(q.lead_id, ""), "")
+            if chip:
+                reply_chip = f'<span class="chip">{chip}</span>'
+        action = ""
+        if q.status == "ready":
+            action = (f'<form class="inline" method="post" action="/outbox/{q.id}/cancel">'
+                      f'<button class="btn sec" type="submit">取消</button></form>')
+        elif q.status == "failed":
+            action = (f'<form class="inline" method="post" action="/outbox/{q.id}/retry">'
+                      f'<button class="btn sec" type="submit">重排</button></form>')
+        note = e((q.error or "")[:80]) if q.error else (q.message_id or "")
+        test_chip = ' <span class="chip">🧪 測試</span>' if q.test else ""
+        rows += (f"<tr><td><a href='/leads/{q.lead_id}'>{e(q.company)}</a>{test_chip}</td>"
+                 f"<td>seq{q.sequence_no}</td><td>{e(q.to_email)}</td>"
+                 f"<td>{local:%m/%d %H:%M}{overdue}</td>"
+                 f"<td>{QUEUE_STATUS_LABELS.get(q.status, q.status)}{reply_chip}</td>"
+                 f"<td><small class='hint'>{note}</small></td><td>{action}</td></tr>")
+    if not rows:
+        rows = ('<tr><td colspan="7">佇列是空的——到 <a href="/review">覆核佇列</a> '
+                "核准信件就會排進來。</td></tr>")
+
+    unsub_rows = "".join(
+        f"<tr><td>{e(u['value'])}</td><td>{e(u['kind'])}</td>"
+        f"<td>{e(u['source'] or '')}</td><td>{e((u['created_at'] or '')[:10])}</td></tr>"
+        for u in db.list_unsubscribed()
+    ) or '<tr><td colspan="4">(無退訂紀錄)</td></tr>'
+
+    next_info = "—"
+    if nxt:
+        next_info = (f"{e(nxt.company)} seq{nxt.sequence_no} @ "
+                     f"{nxt.scheduled_at:%m/%d %H:%M}(buyer 當地)")
+
+    body = f"""
+<h1>寄送佇列 <small class="hint" style="font-size:13px">(本頁每 10 秒自動更新)</small></h1>
+{addr_warn}
+<div id="live">
+<div class="cards">
+  <div class="stat"><b>{used}/{limit}</b><span>今日寄出({e(label)})</span></div>
+  <div class="stat"><b>{len(ready)}</b><span>排程中</span></div>
+  <div class="stat"><b>{len(due_now)}</b><span>已到期待寄</span></div>
+  <div class="stat"><b>{sum(1 for q in queue if q.status == 'sent')}</b><span>累計寄出</span></div>
+</div>
+<div class="card">
+  <div class="row">
+    <span class="chip">後端:{backend_chip}</span>
+    <span class="chip">排程器:{'⏸ 已暫停' if paused else '🟢 自動輪詢中(每 60 秒)'}</span>
+    <span class="chip">上次檢查:{e(scheduler.last_run() or '—')}</span>
+    <span class="chip">下一封:{next_info}</span>
+  </div>
+  <div class="row">
+    <form class="inline" method="post" action="/outbox/run">
+      <button class="btn" type="submit">▶ 立刻跑一輪(寄最早到期的 1 封)</button>
+    </form>
+    <form class="inline" method="post" action="/outbox/pause">
+      <input type="hidden" name="paused" value="{'0' if paused else '1'}">
+      <button class="btn {'gold' if paused else 'warn'}" type="submit">
+        {'▶ 恢復自動寄送' if paused else '⏸ 暫停自動寄送'}</button>
+    </form>
+  </div>
+  <p><small class="hint">節奏防線:一次只寄 1 封、同日排程自動錯開 60–90 分鐘、
+  warmup 前 {WARMUP_WEEKS} 週每天上限壓低(之後 {DAILY_LIMIT_NORMAL} 封/天)、
+  只在 buyer 當地工作日 09:30–16:30 寄、對方回信自動取消剩餘跟進。</small></p>
+</div>
+<div class="card">
+  <h2 style="margin-top:0">🧪 三輪測試序列(走完整流程,含人工覆核)</h2>
+  <p>模擬真實名單的<b>全程</b>:按下後三輪測試草稿會進<b>覆核佇列</b>,
+  你像對真名單一樣檢視、改稿、按「核准整串」→ 才照壓縮時程
+  <b>0 / +2 / +4 分鐘</b>(真實為 +4/+6 工作日)自動寄出,seq2/3 接同一信串。
+  <b>不佔 warmup 額度、不受限流、不動漏斗</b>。</p>
+  <form method="post" action="/outbox/test" class="row">
+    <input name="to_email" type="email" placeholder="你的收信信箱"
+           value="mike410123024@gmail.com" style="min-width:280px" required>
+    <button class="btn gold" type="submit">建立測試草稿 → 前往覆核</button>
+  </form>
+  <p><small class="hint">驗證清單:①覆核頁三封同屏可改稿 ②核准後佇列出現三列
+  ③三封都到且同一信串(Re:)④間隔約 2 分鐘 ⑤footer 完整;
+  <b>進階:收到 seq1 後馬上回信</b> → seq2/3 應被自動取消(回覆煞車)。
+  重按會產生新草稿、核准時舊測試排程自動作廢。</small></p>
+</div>
+<h2>佇列明細({len(queue)} 封)</h2>
+<table><tr><th>公司</th><th>序列</th><th>收件人</th><th>排定時間(buyer 當地)</th>
+<th>狀態</th><th>備註</th><th></th></tr>{rows}</table>
+<h2>退訂名單 <small class="hint">(寄送前自動比對;email 或整個網域)</small></h2>
+<form method="post" action="/outbox/unsub" class="row">
+  <input name="value" placeholder="email 或網域(例 spam.com)" style="min-width:260px" required>
+  <button class="btn sec" type="submit">加入退訂</button>
+</form>
+<table><tr><th>對象</th><th>類型</th><th>來源</th><th>加入日</th></tr>{unsub_rows}</table>
+</div><!-- /live -->
+<h2>排程器日誌 <small class="hint">(每 3 秒自動更新;回信偵測 📩 / 退訂 🚫 都在這裡)</small></h2>
+<pre class="log" id="dlog">(載入中…)</pre>
+<script>
+async function dpoll() {{
+  try {{
+    const r = await fetch('/outbox/log'); const s = await r.json();
+    document.getElementById('dlog').textContent = s.log.length ? s.log.join('\\n') : '(尚無紀錄)';
+  }} catch (e) {{}}
+  setTimeout(dpoll, 3000);
+}}
+dpoll();
+
+// 全頁動態區自動刷新:統計卡/佇列/退訂名單每 10 秒更新一次;
+// 使用者正在輸入時跳過本輪(避免吃掉打到一半的字)
+async function lpoll() {{
+  const a = document.activeElement;
+  if (!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'))) {{
+    try {{
+      const r = await fetch(location.pathname);
+      const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+      const fresh = doc.getElementById('live');
+      if (fresh) document.getElementById('live').innerHTML = fresh.innerHTML;
+    }} catch (e) {{}}
+  }}
+  setTimeout(lpoll, 10000);
+}}
+setTimeout(lpoll, 10000);
+</script>"""
+    return page("寄送佇列", body, active="/outbox", flash=msg, flash_err=err)
+
+
+@app.post("/outbox/test")
+def outbox_test(to_email: str = Form(...)):
+    """建三輪測試草稿進覆核佇列——跟真名單走同一道人工核准閘門(覆核也是測試的一環)。"""
+    from urllib.parse import quote
+
+    from ..sending.sequence import queue_test_review
+
+    try:
+        lead = queue_test_review(to_email)
+    except ValueError as exc:
+        return RedirectResponse(f"/outbox?err={quote(str(exc))}", status_code=303)
+    msg = (f"🧪 三輪測試草稿已進覆核佇列(收件人 {lead.email})——"
+           "請像對真名單一樣逐封檢視、按「核准整串」;核准後照壓縮時程"
+           "(0 / +2 / +4 分鐘)自動寄出,約 5 分鐘跑完。")
+    return RedirectResponse(f"/review?msg={quote(msg)}#lead-{lead.id}", status_code=303)
+
+
+@app.post("/outbox/run")
+def outbox_run():
+    lines = scheduler.run_one_round(manual=True)
+    from urllib.parse import quote
+    return RedirectResponse(f"/outbox?msg={quote(lines[-1] if lines else '完成')}",
+                            status_code=303)
+
+
+@app.post("/outbox/pause")
+def outbox_pause(paused: str = Form("1")):
+    scheduler.set_paused(paused == "1")
+    return RedirectResponse("/outbox", status_code=303)
+
+
+@app.post("/outbox/{qid}/cancel")
+def outbox_cancel(qid: int):
+    qe = db.get_queued(qid)
+    if qe and qe.status == "ready":
+        qe.status = "cancelled"
+        qe.error = "使用者手動取消"
+        db.save_queued(qe)
+    return RedirectResponse("/outbox", status_code=303)
+
+
+@app.post("/outbox/{qid}/retry")
+def outbox_retry(qid: int):
+    """失敗的信重排回佇列(狀態改 ready,下一輪到期即重寄)。"""
+    qe = db.get_queued(qid)
+    if qe and qe.status == "failed":
+        qe.status = "ready"
+        qe.error = None
+        db.save_queued(qe)
+    return RedirectResponse("/outbox", status_code=303)
+
+
+@app.post("/outbox/unsub")
+def outbox_unsub(value: str = Form(...)):
+    value = value.strip().lower()
+    kind = "email" if "@" in value else "domain"
+    db.add_unsubscribe(value, kind=kind, source="manual")
+    # 立刻取消佇列中所有命中退訂的 ready 信
+    n = 0
+    for q in db.list_queue(status="ready"):
+        if db.is_unsubscribed(q.to_email):
+            q.status = "cancelled"
+            q.error = "已加入退訂名單"
+            db.save_queued(q)
+            n += 1
+    from urllib.parse import quote
+    return RedirectResponse(
+        f"/outbox?msg={quote(f'已加入退訂:{value}(取消 {n} 封排程中信件)')}",
+        status_code=303)
+
+
+@app.get("/outbox/log")
+def outbox_log():
+    return JSONResponse({"log": scheduler.log_lines(),
+                         "last_run": scheduler.last_run(),
+                         "paused": scheduler.is_paused()})
 
 
 # ─────────────────────────── 匯入 ───────────────────────────
@@ -736,10 +1034,12 @@ def wipe_confirm(err: str = ""):
 <p>此操作<b>無法復原</b>,將刪除:</p>
 <ul>
   <li><b>{len(leads)} 筆名單</b>(含評分、背景情報、信件草稿、互動紀錄、階段狀態)</li>
+  <li>寄送佇列(排程中/已寄出的紀錄)</li>
   <li>Pipeline 斷點快取(checkpoints)</li>
   <li>outbox 裡 {eml_count} 封已核准信件檔</li>
 </ul>
-<p>會保留:<code>imports/</code> 裡你上傳過的 CSV 原檔(可重新匯入)。</p>
+<p>會保留:<code>imports/</code> 裡你上傳過的 CSV 原檔(可重新匯入)、
+<b>退訂名單</b>(合規承諾,清掉會導致重寄給已退訂的人)。</p>
 <form method="post" action="/wipe" class="row">
   <input name="confirm" placeholder="輸入 DELETE 以確認" autocomplete="off"
          style="min-width:220px" {"disabled" if running else ""}>

@@ -13,11 +13,16 @@ from ..models import Lead
 
 def company_brief(lead: Lead) -> str:
     """Sonnet 生成一頁 brief(繁體中文,攤位上自己人看的)。"""
+    from ..company import get_company
+
+    company = get_company()
+    where = (f"在 {company.campaign.name} 攤位上"
+             if company.campaign.is_trade_show else "在對外開發現場")
     interactions = "\n".join(
         f"- [{i.kind}] {i.content[:200]}" for i in lead.interactions[-5:]
     ) or "(無)"
     prompt = (
-        "你是 Ankomn(台灣真空保鮮罐品牌)在 The Inspired Home Show 攤位上的參謀。"
+        f"你是 {company.name}({company.description or company.industry}){where}的參謀。"
         "根據以下 lead 資料,用繁體中文寫一頁精簡 brief,分四段:\n"
         "1. 這家是誰:通路類型、規模、是否已賣競品\n"
         "2. 該怎麼談:wholesale 直供、還是該請他引介/本身就是 rep\n"

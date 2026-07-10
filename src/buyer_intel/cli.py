@@ -79,14 +79,21 @@ def cmd_review(_args) -> None:
         print(f"評分依據:{lead.score_rationale or ''}")
         print("-" * 60)
         print(lead.pending_draft)
+        for i, fu in enumerate(lead.pending_followups, start=2):
+            print(f"\n--- 跟進信 seq{i}(自動排 +{'4' if i == 2 else '6'} 工作日)---")
+            print(fu)
         print("-" * 60)
-        answer = input("核准並輸出到 outbox?(y=核准 / n=退回 / s=跳過)").strip().lower()
+        answer = input("核准整串並排入寄送佇列?(y=核准 / n=退回 / s=跳過)").strip().lower()
         if answer == "y":
-            if not lead.email:
-                print("⚠️  此 lead 沒有 email——信會輸出,但寄送前要先補收件人")
-            path = actions.approve_draft(lead)
-            print(f"✔ 已輸出 {path}")
-            print(f"  一鍵開啟郵件草稿:buyer-intel send {lead.id}")
+            try:
+                queued = actions.approve_draft(lead)
+            except ValueError as exc:
+                print(f"✘ {exc}")
+                continue
+            print(f"✔ 已排入寄送佇列 {len(queued)} 封:")
+            for q in queued:
+                print(f"  seq{q.sequence_no} → {q.scheduled_at:%m/%d %H:%M %Z}")
+            print("  到期後由排程器自動處理(buyer-intel dispatch 可手動跑一輪)")
         elif answer == "n":
             actions.reject_draft(lead)
             print("已退回(草稿清除;可重跑 pipeline 產生新稿)")
@@ -116,6 +123,14 @@ def cmd_track(args) -> None:
     lead = actions.apply_track(lead, args.event, args.note)
     due = f",下次行動 {lead.next_action_due}" if lead.next_action_due else ""
     print(f"✔ {lead.company} → {lead.stage}{due}")
+
+
+def cmd_dispatch(_args) -> None:
+    """手動跑一輪寄送排程器(Web UI 的背景排程器做同一件事)。"""
+    from .sending.dispatcher import run_once
+
+    for line in run_once():
+        print(f"  {line}")
 
 
 def cmd_followup(_args) -> None:
@@ -154,7 +169,7 @@ def cmd_serve(args) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="buyer-intel",
-        description="Ankomn Buyer Intelligence System(TIHS 2027)。"
+        description="Buyer Intelligence System(公司身分見 company/*.toml)。"
                     "日常操作建議:buyer-intel serve → 瀏覽器 http://localhost:8000",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -192,6 +207,7 @@ def main(argv: list[str] | None = None) -> None:
     p_track.add_argument("--note", help="補充紀錄(選填)")
     p_track.set_defaults(func=cmd_track)
 
+    sub.add_parser("dispatch", help="手動跑一輪寄送排程器(到期信一次寄 1 封)").set_defaults(func=cmd_dispatch)
     sub.add_parser("followup", help="展中每晚 same-day follow-up 批次").set_defaults(func=cmd_followup)
     sub.add_parser("dashboard", help="產出靜態看板 HTML").set_defaults(func=cmd_dashboard)
 

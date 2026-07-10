@@ -98,9 +98,32 @@ APOLLO_API_KEY = os.getenv("APOLLO_API_KEY", "")
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
-# ── 展會資訊(寫入 outreach 信件)──
-TIHS_BOOTH = os.getenv("TIHS_BOOTH", "Clean + Contain 分區,攤位號碼待定")
-CALENDLY_URL = os.getenv("CALENDLY_URL", "")
+# 註:公司身分(價值主張、寄件人、展會/campaign、競品)已移到 company/*.toml
+# (見 company.py),程式碼不再寫死任何一家公司。此處只留「系統行為」的旋鈕。
 
-# 已知競品(用於 L2 豐富時判斷「該通路已有保鮮罐品類貨架」)
-KNOWN_COMPETITORS = ["Fellow Atmos", "Planetary Design", "Airscape", "OXO POP"]
+# ── L6 送後引擎:寄送節奏與暖機(防 Gmail 風控;對應 exportlab warmup 規則)──
+# 寄送後端:eml(預設,乾跑——輸出 .eml 由人寄,安全)| gmail(自動寄,需 OAuth)
+SENDING_BACKEND = os.getenv("SENDING_BACKEND", "eml")
+# 是否在信末附 CAN-SPAM 合規 footer(寄件人實體地址 + reply 退訂機制)
+ENABLE_COMPLIANCE_FOOTER = os.getenv("ENABLE_COMPLIANCE_FOOTER", "1") != "0"
+
+# 暖機:前 WARMUP_WEEKS 週每日上限壓低,之後放寬。空字串=以第一封實際寄出日起算。
+WARMUP_START_DATE = os.getenv("WARMUP_START_DATE", "")   # YYYY-MM-DD
+WARMUP_WEEKS = int(os.getenv("WARMUP_WEEKS", "2"))
+DAILY_LIMIT_WARMUP = int(os.getenv("DAILY_LIMIT_WARMUP", "2"))
+DAILY_LIMIT_NORMAL = int(os.getenv("DAILY_LIMIT_NORMAL", "5"))
+
+# 寄信時段(buyer 當地時間)與同批錯開間隔(分鐘)
+SEND_WINDOW_START = os.getenv("SEND_WINDOW_START", "09:30")
+SEND_WINDOW_END = os.getenv("SEND_WINDOW_END", "16:30")
+INTERVAL_MIN_MINUTES = int(os.getenv("INTERVAL_MIN_MINUTES", "60"))
+INTERVAL_MAX_MINUTES = int(os.getenv("INTERVAL_MAX_MINUTES", "90"))
+# 查不到 buyer 州別時的預設時區(美國東岸;商業活動最集中)
+FALLBACK_TIMEZONE = os.getenv("FALLBACK_TIMEZONE", "America/New_York")
+
+# 三輪跟進的寄送 offset(工作日):seq1=+0、seq2=+4、seq3=+6(業界共識節奏)
+FOLLOWUP_OFFSETS_WORKDAYS = (0, 4, 6)
+MAX_SEQUENCE = 3   # 同一收件人最多寄幾封(硬上限,超過不寄)
+
+# 同一 domain 連續退信幾次就自動加入退訂名單(防高 bounce 傷寄件信譽)
+BOUNCE_LIMIT = 3

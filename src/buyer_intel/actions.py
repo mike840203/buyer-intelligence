@@ -35,7 +35,12 @@ def split_subject(draft: str) -> tuple[str, str]:
     lines = draft.strip().splitlines()
     if lines and lines[0].lower().startswith("subject:"):
         return lines[0][len("subject:"):].strip(), "\n".join(lines[1:]).strip()
-    return "Meeting at The Inspired Home Show 2027", draft.strip()
+    # 草稿沒有主旨行時的保底主旨(依 campaign 型態組,不寫死任何展會)
+    from .company import get_company
+
+    c = get_company().campaign
+    fallback = f"Meeting at {c.name}" if c.is_trade_show else "Quick introduction"
+    return fallback, draft.strip()
 
 
 def write_eml(lead: Lead, draft: str) -> Path:
@@ -52,23 +57,27 @@ def write_eml(lead: Lead, draft: str) -> Path:
     return path
 
 
-def approve_draft(lead: Lead, edited_draft: str | None = None) -> Path:
-    """核准草稿(可帶人工修改後版本):輸出 .eml、記互動、推進階段、排跟進。"""
+def approve_draft(lead: Lead, edited_draft: str | None = None,
+                  edited_followups: list[str] | None = None) -> list:
+    """核准(可帶人工修改後版本):三輪信排入寄送佇列,dispatcher 到期自動寄。
+
+    核准一次涵蓋整串:seq1 + 預生成的 seq2/3 一起入佇列(+0/+4/+6 工作日)。
+    對方回信時剩餘跟進自動取消(見 apply_track)。回傳入佇列的 QueuedEmail 列表。
+    """
+    from .sending.sequence import enqueue_for_lead
+
     draft = (edited_draft or lead.pending_draft or "").strip()
     if not draft:
         raise ValueError(f"{lead.company} 沒有待覆核的草稿")
-    path = write_eml(lead, draft)
-    lead.interactions.append(Interaction(kind="email_sent", content=draft))
-    lead.pending_draft = None
-    lead.stage = "contacted"
-    lead.next_action_due = date.today() + timedelta(days=5)
-    db.save_lead(lead)
-    return path
+    followups = edited_followups if edited_followups is not None else lead.pending_followups
+    drafts = [draft] + [f for f in (followups or []) if f and f.strip()]
+    return enqueue_for_lead(lead, drafts)
 
 
 def reject_draft(lead: Lead) -> None:
-    """退回草稿:清空待審稿,可重跑 pipeline 產生新稿。"""
+    """退回草稿:清空待審稿(含跟進信),可重跑 pipeline 產生新稿。"""
     lead.pending_draft = None
+    lead.pending_followups = []
     db.save_lead(lead)
 
 
@@ -87,13 +96,22 @@ def mailto_url(lead: Lead) -> str | None:
 
 
 def apply_track(lead: Lead, event: str, note: str | None = None) -> Lead:
-    """推進 pipeline 階段 + 自動排下次行動日 + 記錄互動。"""
+    """推進 pipeline 階段 + 自動排下次行動日 + 記錄互動。
+
+    回覆煞車:對方有回應(replied/meeting/…)或判定無望(dead)時,
+    自動取消佇列中還沒寄的跟進信——已經在對話了,seq2/3 再出門就是騷擾。
+    """
     stage, due_days, label = TRACK_EVENTS[event]
     lead.stage = stage  # type: ignore[assignment]
     lead.next_action_due = (
         date.today() + timedelta(days=due_days) if due_days else None
     )
+    extra = ""
+    if lead.id is not None:
+        cancelled = db.cancel_sequence(lead.id, from_seq=1)
+        if cancelled:
+            extra = f"(已自動取消 {cancelled} 封未寄出的跟進信)"
     lead.interactions.append(Interaction(
-        kind="other", content=label + (f":{note}" if note else "")
+        kind="other", content=label + (f":{note}" if note else "") + extra
     ))
     return db.save_lead(lead)

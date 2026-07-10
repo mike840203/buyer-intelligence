@@ -9,12 +9,12 @@ dist/
 # 環境變數與金鑰
 .env
 
-# 本地資料(名單資料庫、LangGraph 存檔點、輸出)
-data/*.db
-data/*.db-*
+# 本地資料(名單資料庫、LangGraph 存檔點、執行狀態、輸出)
+data/
 outbox/
 dashboard.html
-imports/          # 匯入的名單 CSV(含個資 email,不進版控)
+# 匯入的名單 CSV(含個資 email,不進版控)—— 註解另起一行,避免行內註解使規則失效
+imports/
 
 # 編輯器
 .DS_Store

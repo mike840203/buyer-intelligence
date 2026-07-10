@@ -62,14 +62,20 @@ def rule_authority_score(title: str | None) -> float:
 
 
 def llm_fit_judgment(lead: Lead) -> FitJudgment:
-    """Sonnet 質性判斷:通路契合度 + 決策權(佐以背景摘要)。"""
+    """Sonnet 質性判斷:通路契合度 + 決策權(佐以背景摘要)。判斷基準由 company profile 提供。"""
+    from .company import get_company
+
+    company = get_company()
+    channels = company.targeting.channel_priority or "與本品類相關的專業通路優先"
+    competitors = company.competitors_text or "同品類競品"
     judgment = complete_structured(
         MODEL_MID,
         (
-            "你在替台灣真空保鮮罐品牌 Ankomn 評估美國 B2B 買家線索。"
-            "Ankomn 的核心價值主張是咖啡豆與食品的真空保鮮,"
-            "主攻通路優先序:精品咖啡器材通路 > 廚房專賣零售 > 一般零售。"
-            "已販售競品保鮮罐(如 Fellow Atmos)代表品類有貨架,應加分。\n\n"
+            f"你在替 {company.name}({company.description or company.industry})"
+            "評估美國 B2B 買家線索。"
+            f"核心價值主張:{company.value_proposition or company.description}。"
+            f"主攻通路優先序:{channels}。"
+            f"已販售競品(如 {competitors})代表品類有貨架,應加分。\n\n"
             f"公司:{lead.company}\n"
             f"聯絡人職稱:{lead.title or '未知'}\n"
             f"通路分層:{lead.tier}\n"

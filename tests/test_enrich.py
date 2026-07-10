@@ -1,7 +1,15 @@
 """L2 去重與地區映射的單元測試(不呼叫 API)。"""
 
-from buyer_intel.enrich import dedupe, map_region
+from buyer_intel.enrich import _domain_from_website, dedupe, map_region
 from buyer_intel.models import RawLead
+
+
+def test_domain_from_website():
+    assert _domain_from_website("https://www.darkmattercoffee.com/") == "darkmattercoffee.com"
+    assert _domain_from_website("http://gaslightcoffee.com") == "gaslightcoffee.com"
+    assert _domain_from_website("https://shop.example.com/products") == "shop.example.com"
+    assert _domain_from_website(None) is None
+    assert _domain_from_website("") is None
 
 
 def test_map_region():

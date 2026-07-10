@@ -84,10 +84,41 @@ class Lead(BaseModel):
     stage: Stage = "new"
     interactions: list[Interaction] = Field(default_factory=list)
     next_action_due: date | None = None     # 逾期警示依據
-    pending_draft: str | None = None        # 待人工覆核的信件草稿
+    pending_draft: str | None = None        # 待人工覆核的信件草稿(seq1)
+    # 三輪序列的 seq2/3 草稿(與 seq1 一起覆核,核准一次涵蓋整串)
+    pending_followups: list[str] = Field(default_factory=list)
 
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── L6 送後引擎:寄送佇列 ──
+
+EmailStatus = Literal["ready", "sent", "cancelled", "failed"]
+
+
+class QueuedEmail(BaseModel):
+    """一封排入寄送佇列的信(三輪序列的一封)。
+
+    核准當下,一位 lead 一次預建 seq1/2/3 三筆 ready;dispatcher 依 scheduled_at
+    到期後一次寄 1 封。狀態機:ready → sent / cancelled(回覆/退訂)/ failed。
+    """
+
+    id: int | None = None          # SQLite rowid,入庫後回填
+    lead_id: int
+    company: str
+    to_email: str
+    subject: str
+    body: str                      # 完整信件內文(已含合規 footer)
+    sequence_no: int               # 1 / 2 / 3
+    scheduled_at: datetime         # 帶時區的排定寄送時間(buyer 當地)
+    status: EmailStatus = "ready"
+    test: bool = False             # 測試信:走完整寄送鏈,但不吃 warmup 額度/不受限流
+    thread_ref: str | None = None  # 寄送後端 thread id(seq2/3 接續同一 thread)
+    message_id: str | None = None  # 寄出後拿到的 message id(沒拿到=沒寄成功)
+    error: str | None = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    sent_at: datetime | None = None
 
 
 # ── LLM 結構化輸出用的中間模型 ──
@@ -129,3 +160,10 @@ class CritiqueResult(BaseModel):
     verdict: Literal["pass", "revise"]
     issues: list[str] = Field(default_factory=list)
     rewrite_hints: str | None = None
+
+
+class FollowUpDrafts(BaseModel):
+    """三輪序列的 seq2/3 草稿(一次 LLM 呼叫同時生成,各含 'Subject: ...' 首行)。"""
+
+    seq2: str   # 價值信(+4 工作日):補一個具體角度,軟 CTA
+    seq3: str   # 收尾信(+6 工作日):明說最後一封,零 CTA,開未來大門

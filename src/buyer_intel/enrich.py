@@ -14,7 +14,8 @@ import re
 import httpx
 from rapidfuzz import fuzz
 
-from .config import HUNTER_API_KEY, KNOWN_COMPETITORS, MODEL_FAST, MODEL_MID
+from .company import get_company
+from .config import HUNTER_API_KEY, MODEL_FAST, MODEL_MID
 from .llm import complete, complete_structured
 from .models import AltContact, EnrichmentFacts, Lead, RawLead, Region
 
@@ -98,13 +99,19 @@ def _normalize_company(name: str) -> str:
     return re.sub(r"[^\w\s]", " ", name).strip()
 
 
-# 品類對口關鍵字:職稱帶這些字的買手,就是 Ankomn 該敲的門
+# 品類對口關鍵字(預設清單):職稱帶這些字的買手優先。
+# company profile 的 targeting.category_keywords 有值時以 profile 為準(通用化)。
 CATEGORY_TITLE_KEYWORDS = [
     "hardgood", "housewares", "home", "kitchen", "coffee",
     "seasonal", "decor", "tabletop", "gourmet",
 ]
 BUYER_TITLE_KEYWORDS = ["buyer", "category", "purchas", "merchandis"]
 OWNER_TITLE_KEYWORDS = ["owner", "founder", "ceo", "president"]
+
+
+def _category_keywords() -> list[str]:
+    kws = get_company().targeting.category_keywords
+    return kws or CATEGORY_TITLE_KEYWORDS
 
 
 def _contact_priority(l: RawLead) -> tuple[int, int]:
@@ -116,7 +123,7 @@ def _contact_priority(l: RawLead) -> tuple[int, int]:
     """
     title = (l.title or "").lower()
     is_buyer = any(k in title for k in BUYER_TITLE_KEYWORDS)
-    if is_buyer and any(k in title for k in CATEGORY_TITLE_KEYWORDS):
+    if is_buyer and any(k in title for k in _category_keywords()):
         rank = 4
     elif any(k in title for k in OWNER_TITLE_KEYWORDS):
         rank = 3
@@ -188,6 +195,71 @@ def verify_email(email: str) -> bool:
     return status in ("valid", "accept_all", "webmail")
 
 
+def _domain_from_website(website: str | None) -> str | None:
+    """從網站 URL 抽出乾淨網域(去 http/www/路徑)。"""
+    if not website:
+        return None
+    domain = re.sub(r"^https?://", "", website.strip().lower())
+    domain = domain.split("/")[0].removeprefix("www.")
+    return domain or None
+
+
+# 決策人優先序:採購/管理相關部門與資深度優先(挑「最該寄的人」)
+_HUNTER_DEPT_RANK = {
+    "executive": 5, "management": 4, "operations": 3,
+    "sales": 3, "marketing": 2, "purchasing": 5,
+}
+_HUNTER_SENIORITY_RANK = {"executive": 3, "senior": 2, "junior": 1}
+
+
+def find_contacts_by_domain(domain: str, limit: int = 10) -> list[AltContact]:
+    """Hunter Domain Search:網域反查該公司公開署名的決策人。
+
+    回傳依「最該寄的人」排序的 AltContact(採購/管理/executive 優先),
+    只收 personal 類(具名),排除 generic(info@/hello@)——通用信箱另存。
+    未設金鑰回空清單。
+    """
+    if not HUNTER_API_KEY or not domain:
+        return []
+    resp = httpx.get(
+        "https://api.hunter.io/v2/domain-search",
+        params={"domain": domain, "api_key": HUNTER_API_KEY, "limit": limit},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    emails = resp.json().get("data", {}).get("emails", [])
+
+    def rank(em: dict) -> tuple:
+        dept = _HUNTER_DEPT_RANK.get(em.get("department") or "", 0)
+        sen = _HUNTER_SENIORITY_RANK.get(em.get("seniority") or "", 0)
+        return (dept, sen, em.get("confidence") or 0)
+
+    people = [em for em in emails if em.get("type") == "personal" and em.get("first_name")]
+    people.sort(key=rank, reverse=True)
+    return [
+        AltContact(
+            contact_name=f"{em.get('first_name') or ''} {em.get('last_name') or ''}".strip() or None,
+            title=em.get("position"),
+            email=em.get("value"),
+        )
+        for em in people
+    ]
+
+
+def find_generic_email(domain: str) -> str | None:
+    """網域反查的通用信箱(info@/hello@),小店常見、店主在看,可作退路。"""
+    if not HUNTER_API_KEY or not domain:
+        return None
+    resp = httpx.get(
+        "https://api.hunter.io/v2/domain-search",
+        params={"domain": domain, "api_key": HUNTER_API_KEY, "type": "generic", "limit": 1},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    emails = resp.json().get("data", {}).get("emails", [])
+    return emails[0]["value"] if emails else None
+
+
 def to_lead(raw: RawLead) -> Lead:
     """RawLead → Lead:正規化 + 地區映射 + email 驗證。"""
     lead = Lead(
@@ -209,18 +281,20 @@ def to_lead(raw: RawLead) -> Lead:
 
 
 def research_company(lead: Lead) -> str:
-    """Sonnet + web_search:蒐集公司背景的自由文字摘要。"""
-    competitors = "、".join(KNOWN_COMPETITORS)
+    """Sonnet + web_search:蒐集公司背景的自由文字摘要(依 company profile 客製)。"""
+    company = get_company()
+    competitors = company.competitors_text or "competing products in the same category"
+    channels = company.targeting.channel_priority or (
+        "specialty retail / online store / distributor / sales rep group")
     prompt = (
         f"Research the US retailer/company '{lead.company}'"
         f"{f' ({lead.website})' if lead.website else ''}"
         f"{f' in {lead.city}, {lead.state}' if lead.state else ''}. "
-        "I am a Taiwanese vacuum food-storage container brand (Ankomn) preparing "
+        f"I am {company.name}, {company.description or company.industry}, preparing "
         "B2B wholesale outreach. Find and summarize: "
         "1) number of retail locations (or online-only), "
-        "2) channel type (specialty coffee gear e-commerce / coffee roaster chain / "
-        "kitchenware specialty / general retail / sales rep group), "
-        f"3) whether they already sell competing storage products such as {competitors}, "
+        f"2) channel type (relevant channels: {channels}), "
+        f"3) whether they already sell competing products such as {competitors}, "
         "4) rough revenue scale if public. Keep it under 200 words."
     )
     return complete(MODEL_MID, prompt, max_tokens=2048, web_search=True)
@@ -255,4 +329,47 @@ def enrich_lead(lead: Lead) -> Lead:
     lead.store_count = facts.store_count
     lead.sells_competitors = facts.sells_competitors
     lead.enrichment_notes = facts.summary
+    return lead
+
+
+def backfill_contacts(lead: Lead) -> Lead:
+    """對缺 email 但有網站的 lead,用 Hunter 網域反查補決策人。
+
+    設計:只在評分過關後呼叫(見 graph),不對 C 級/T3 花額度。
+    - 找到具名決策人 → 第一位設為主收件人並驗證,其餘存 alt_contacts
+    - 只找到通用信箱(info@/hello@)→ 填為主 email(小店店主常在看)
+    - 網域反查失敗不阻擋流程
+    """
+    if lead.email or not lead.website:
+        return lead
+    domain = _domain_from_website(lead.website)
+    if not domain:
+        return lead
+    try:
+        people = find_contacts_by_domain(domain)
+    except httpx.HTTPError:
+        return lead
+
+    if people:
+        top = people[0]
+        lead.contact_name = top.contact_name or lead.contact_name
+        lead.title = top.title or lead.title
+        lead.email = top.email
+        try:
+            lead.email_verified = verify_email(top.email) if top.email else False
+        except httpx.HTTPError:
+            lead.email_verified = False
+        lead.alt_contacts.extend(people[1:])  # 其餘存備選
+        note = f"Hunter 網域反查補上 {len(people)} 位決策人(主:{top.contact_name})"
+    else:
+        try:
+            generic = find_generic_email(domain)
+        except httpx.HTTPError:
+            generic = None
+        if not generic:
+            return lead
+        lead.email = generic
+        note = f"Hunter 僅找到通用信箱 {generic}(小店店主常在看,稱呼用通用)"
+
+    lead.enrichment_notes = f"{lead.enrichment_notes or ''}\n[{note}]".strip()
     return lead

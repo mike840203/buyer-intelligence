@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buyer Intelligence System — 完整系統規格書 v2</title>
+<title>Buyer Intelligence System — 完整系統規格書 v3(as-built)</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -63,416 +63,456 @@ footer{margin-top:64px;padding:30px 0 48px;border-top:1px solid var(--line);font
 </head>
 <body>
 
-<header>
-  <div class="wrap">
-    <div class="eyebrow">ANKOMN / BUYER INTELLIGENCE SYSTEM · v2.0 完整規格書(AS-BUILT)</div>
-    <h1>Buyer Intelligence System<br>完整系統規格書</h1>
-    <p class="sub">本文件為<strong>已實作系統</strong>的完整規格(as-built specification):每一層的輸入輸出、演算法、判定規則、LLM 呼叫規格、資料模型、指令介面全部載明——依本文件可從零重建整條 pipeline。v1 為設計提案;v2 反映 2026-07 上線後的實際系統與所有實測修正。</p>
-    <div class="meta">
-      <div><span>技術棧</span><b>Python 3.11+ · LangGraph · Pydantic v2 · SQLite · FastAPI</b></div>
-      <div><span>LLM 執行</span><b>Claude Code CLI(訂閱額度)/ Anthropic API 雙後端</b></div>
-      <div><span>測試</span><b>17 項自動化測試 · 端對端已驗證</b></div>
-      <div><span>版本</span><b>v2.0 · 2026-07</b></div>
-    </div>
+<header><div class="wrap">
+  <div class="eyebrow">BUYER INTELLIGENCE SYSTEM · v3.0 完整規格書(AS-BUILT)</div>
+  <h1>Buyer Intelligence System<br>完整系統規格書</h1>
+  <p class="sub">本文件為<strong>已實作系統</strong>的完整規格(as-built specification):每一層的輸入輸出、演算法、判定規則、LLM 呼叫規格、資料模型、寄送引擎與介面全部載明——依本文件可從零重建整條 pipeline。v2 為五層+人工寄信;<strong>v3 新增 L6 送後引擎(核准後全自動三輪寄送)與公司 Profile 通用化層</strong>,反映 2026-07-10 的實際系統。</p>
+  <div class="meta">
+    <div><span>技術棧</span><b>Python 3.11+ · LangGraph · Pydantic v2 · SQLite · FastAPI</b></div>
+    <div><span>LLM 執行</span><b>Claude Code CLI(訂閱額度)/ Anthropic API 雙後端</b></div>
+    <div><span>寄送</span><b>Gmail API(OAuth)/ .eml 乾跑 雙後端</b></div>
+    <div><span>測試</span><b>38 項自動化測試 · 端對端寄信已驗證</b></div>
+    <div><span>版本</span><b>v3.0 · 2026-07-10</b></div>
   </div>
-</header>
+</div></header>
 
 <nav><div class="wrap">
-  <a href="#s00">00 現況</a>
-  <a href="#s01">01 原則</a>
-  <a href="#s02">02 LLM 後端</a>
-  <a href="#s03">03 總覽</a>
-  <a href="#s04">04 L1</a>
-  <a href="#s05">05 L2</a>
-  <a href="#s06">06 L3</a>
-  <a href="#s07">07 L4</a>
-  <a href="#s08">08 L5</a>
-  <a href="#s09">09 資料模型</a>
-  <a href="#s10">10 編排</a>
-  <a href="#s11">11 CLI</a>
-  <a href="#s12">12 設定</a>
-  <a href="#s13">13 測試</a>
-  <a href="#s14">14 成本</a>
-  <a href="#s15">15 限制</a>
+  <a href="#s00">00 現況</a><a href="#s01">01 原則</a><a href="#s02">02 LLM 後端</a>
+  <a href="#s03">03 總覽</a><a href="#s04">04 Profile 層</a><a href="#s05">05 L1</a>
+  <a href="#s06">06 L2</a><a href="#s07">07 L3</a><a href="#s08">08 L4</a>
+  <a href="#s09">09 L6 送後引擎</a><a href="#s10">10 L5</a><a href="#s11">11 資料模型</a>
+  <a href="#s12">12 編排</a><a href="#s13">13 介面</a><a href="#s14">14 檔案與設定</a>
+  <a href="#s15">15 測試</a><a href="#s16">16 成本</a><a href="#s17">17 限制與路線</a>
 </div></nav>
 
-<main class="wrap">
+<div class="wrap">
 
 <!-- 00 -->
 <section id="s00">
-  <div class="sec-label"><span class="no">00</span><h2>系統現況(v1 → v2 差異)</h2></div>
+  <div class="sec-label"><span class="no">00</span><h2>系統現況(v2 → v3 差異)</h2></div>
   <table>
-    <thead><tr><th>項目</th><th>v1 設計(2026-07 初)</th><th>v2 實況(as-built)</th></tr></thead>
-    <tbody>
-      <tr><td>開發狀態</td><td>提案</td><td class="ok">已上線:五層全部可執行,首批 18 家真實名單完成匯入與評分</td></tr>
-      <tr><td>LLM 執行途徑</td><td>Anthropic API($30–80/月)</td><td class="ok">雙後端;預設走 Claude Code CLI 訂閱額度,增量成本 $0</td></tr>
-      <tr><td>模型</td><td>Haiku / Sonnet / Opus(泛稱)</td><td><code>claude-haiku-4-5</code> / <code>claude-sonnet-5</code> / <code>claude-opus-4-8</code></td></tr>
-      <tr><td>Apollo</td><td>「免費 tier 驗證流程」</td><td class="warn">實測:People Search API 需付費方案(403);免費期走網頁匯出 CSV,adapter 自動識別 Apollo 格式</td></tr>
-      <tr><td>T3 大型量販</td><td>未規範</td><td class="ok">新增戰略防線:T3 自動歸檔、禁止主動觸達(雙重攔截)</td></tr>
-      <tr><td>同公司多聯絡人</td><td>未規範</td><td class="ok">新增聯絡人優先序演算法 + 備援聯絡人機制</td></tr>
-      <tr><td>寄信與追蹤</td><td>未規範</td><td class="ok">新增 .eml 輸出、mailto 一鍵寄信、track 六事件追蹤指令</td></tr>
-      <tr><td>操作介面</td><td>CLI + 展中手機頁</td><td class="ok">全功能 Web UI(webui/):名單/覆核改稿/寄信/追蹤/匯入/背景 pipeline 全部網頁化;CLI 保留供腳本化,與 UI 共用 actions.py 業務層</td></tr>
-      <tr><td>批次效能</td><td>串行</td><td class="ok">pipeline 平行處理(預設 3 workers,約 3 倍),單筆失敗不拖垮整批;SQLite 併發加固(建圖鎖 + WAL + 30s busy timeout)</td></tr>
-      <tr><td>批次篩選</td><td>全量執行</td><td class="ok">pipeline 可依<strong>州 × 來源</strong>篩選(UI 下拉附各項筆數);「地區」概念退居評分內部,UI 一律顯示州名(50 州全名自動正規化為縮寫)</td></tr>
-      <tr><td>來源追蹤</td><td>未規範</td><td class="ok">每筆名單帶來源標籤(Apollo / Google 地圖 / IHA / LinkedIn / 競品 Stockists / 手動 / 名片),CSV 匯入時自選;供各來源轉化率歸因</td></tr>
-      <tr><td>email 驗證時機</td><td>匯入時(同步)</td><td class="ok">移至 pipeline L2 背景(匯入秒進不卡 UI);手動改信箱/換主收件人時即時驗證單筆。Hunter Free(100 次/月)已接通</td></tr>
-      <tr><td>資料治理</td><td>未規範</td><td class="ok">清空全部(輸入 DELETE 雙重確認,任務執行中禁用)、單筆刪除(確認框)、LinkedIn 在職查核連結(寄信前人工確認,合規不爬蟲)</td></tr>
-      <tr><td>名單來源策略</td><td>Apollo 為主</td><td class="ok"><strong>多來源接力</strong>:Google 地圖(找店,翻頁~60家)→ Hunter 網域反查(找人)→ Hunter 驗證,免費鏈補齊 Apollo 對小店的覆蓋盲區;LinkedIn 僅用於 T2 大零售(小店老闆不在 LinkedIn);ImportYeti 手查找 T0 經銷商。決策:不接爬蟲類自動化(Apify LinkedIn/ImportYeti 評估後 revert——脆弱、會被封、髒資料仍需人工判斷)</td></tr>
-    </tbody>
+    <tr><th>項目</th><th>v2(2026-07 初)</th><th>v3 實況(as-built)</th></tr>
+    <tr><td>觸達鐵律</td><td>「系統只產草稿,<strong>絕不自動寄信</strong>」;核准 → .eml → 人工寄</td><td>「系統只產草稿,<strong>人工核准後進入自動寄送</strong>」——閘門不動,自動化的只有「送出的手」。核准一次涵蓋整串三輪</td></tr>
+    <tr><td>跟進</td><td>單封信;<code>next_action_due</code> 只做逾期提醒</td><td><strong>三輪序列</strong>:seq1 觸達 + seq2 價值(+4 工作日)+ seq3 收尾(+6 工作日),pipeline 一次預生成、覆核同屏顯示;對方回信自動取消剩餘(UI 事件與 Gmail thread 偵測雙路煞車)</td></tr>
+    <tr><td>寄送</td><td>無(人工 mailto / .eml)</td><td><strong>L6 送後引擎</strong>:email_queue 狀態機 + 背景排程器(60 秒輪詢)+ 防風控節奏(暖機限流/一次一封/interval 護欄/工作日時段/假日)+ 退訂與 bounce 防線 + CAN-SPAM footer。後端可插拔:<code>eml</code> 乾跑(預設)/ <code>gmail</code>(OAuth,已接通實測)</td></tr>
+    <tr><td>回覆偵測</td><td>手動(人按 track replied)</td><td>gmail 模式自動:每輪掃 sent thread,出現非我方訊息 → 自動 <code>apply_track(replied)</code> + 取消剩餘跟進;eml 模式仍走 UI 按鈕</td></tr>
+    <tr><td>公司耦合</td><td>Ankomn 寫死於 outreach/enrich/scoring/brief/config</td><td><strong>公司 Profile 層</strong>(company/*.toml + company.py):價值主張/寄件人/campaign/競品/品類關鍵字全部設定化;<code>COMPANY_PROFILE</code> 環境變數切換,換公司零程式碼修改(已以虛構公司端對端驗證)</td></tr>
+    <tr><td>合規</td><td>未實作(列於待辦)</td><td>CAN-SPAM footer 自動附加(實體地址 + reply UNSUBSCRIBE);地址未填時 gmail 自動寄送被硬性擋下;退訂名單寄前必查、清空資料也不刪</td></tr>
+    <tr><td>測試</td><td>17–18 項</td><td><strong>38 項</strong>:新增排程數學/footer 要件/入佇列錯開/一次一封/warmup 限流/回覆煞車/寄前守門/seq1 失敗跟進暫緩</td></tr>
+    <tr><td>端對端驗證</td><td>單筆 pipeline(產信)</td><td>+ <strong>寄信端對端</strong>:OAuth → 佇列 → 排程器自動派送 → Gmail API 寄達測試信箱(落點:垃圾郵件——寄達率對策見《上線作戰手冊》,屬系統外基建)</td></tr>
+    <tr><td>UI</td><td>名單/覆核/匯入/pipeline/名片</td><td>+ <strong>/outbox 寄送佇列頁</strong>(用量/暖機階段/佇列明細/單封取消/失敗重排/排程器日誌/暫停恢復/手動跑一輪/退訂管理/🧪 測試信);覆核頁三輪化;儀表板佇列卡</td></tr>
   </table>
 </section>
 
 <!-- 01 -->
 <section id="s01">
-  <div class="sec-label"><span class="no">01</span><h2>設計原則(六條,全部已實裝)</h2></div>
+  <div class="sec-label"><span class="no">01</span><h2>設計原則(七條,全部已實裝)</h2></div>
   <div class="card">
-    <p><strong>1. Adapter Interface Pattern</strong> — 每個外部資料源一個 adapter,實作統一介面 <code>BaseAdapter.fetch(**kwargs) → list[RawLead]</code>。任一資料源漲價/封鎖/關閉,換 adapter 不動核心。</p>
-    <p><strong>2. Human-in-the-loop</strong> — 系統只產草稿,<strong>絕不自動寄信</strong>。核准 → .eml 輸出 → mailto 開啟郵件軟體 → 寄送鍵由人按。</p>
+    <p><strong>1. Adapter Interface Pattern</strong> — 每個外部資料源一個 adapter,實作統一介面 <code>BaseAdapter.fetch(**kwargs) → list[RawLead]</code>。任一資料源漲價/封鎖/關閉,換 adapter 不動核心。寄送後端同理:<code>eml</code> / <code>gmail</code> 可插拔。</p>
+    <p><strong>2. Human-in-the-loop 閘門</strong> — 系統只產草稿,<strong>人工核准後才進入自動寄送</strong>。覆核頁一次審整串三輪(皆可改稿),按一次核准 → 排程 → 自動寄 → 回信自動煞車。AI 幻覺永遠過不了人眼這道門,但人只按一次。</p>
     <p><strong>3. 模型分級用工</strong> — 便宜快的做清洗抽取,中階做生成判斷,最貴的只做審稿把關(見 02 章映射表)。</p>
-    <p><strong>4. 單機優先</strong> — SQLite 單檔 + 本地執行;展中以 FastAPI 輕量 Web UI 供手機使用。不引入 Postgres/佇列/雲端。</p>
-    <p><strong>5. 戰略防線內建</strong>(v2 新增)— 戰略規則寫進程式:T3 不主動觸達、T0 Rep 走獨立信件通道。違反戰略的操作被系統攔截,不依賴人的記性。</p>
-    <p><strong>6. 每個判定可解釋</strong>(v2 新增)— 評分附 rationale、去重逐筆印原因與保留者職稱、落選聯絡人轉備援不丟棄。人可以審計每一個機器決定。</p>
+    <p><strong>4. 單機優先</strong> — SQLite 單檔 + 本地執行;FastAPI 輕量 Web UI。不引入 Postgres/佇列服務/雲端。</p>
+    <p><strong>5. 戰略防線內建</strong> — 戰略規則寫進程式:T3 不主動觸達、T0 Rep 獨立通道、同收件人至多 3 封、回信即停。違反戰略的操作被系統攔截,不依賴人的記性。</p>
+    <p><strong>6. 每個判定可解釋</strong> — 評分附 rationale、去重逐筆印原因、佇列每筆狀態/錯誤可查、排程器逐輪日誌。人可以審計每一個機器決定。</p>
+    <p><strong>7. 確定性歸程式,判斷歸 LLM(v3 明文化)</strong> — 排程數學、限流、狀態機、合規 footer 等寫得成 if/else 的規則一律用程式實作並測試釘死;LLM 只出現在四個判斷點(背景研究/契合評分/寫信/審稿)。整個 L6 寄送層零 LLM 呼叫。</p>
   </div>
 </section>
 
 <!-- 02 -->
 <section id="s02">
   <div class="sec-label"><span class="no">02</span><h2>LLM 後端與模型分工</h2></div>
-  <p class="lead">所有 LLM 呼叫收斂到單一抽象層(<code>llm.py</code>)的兩個函式,後端以環境變數 <code>LLM_BACKEND</code> 切換:</p>
-  <pre><code><span class="fn">complete</span>(model, prompt, *, max_tokens=2048, web_search=False, image_path=None) → <span class="st">str</span>
-<span class="fn">complete_structured</span>(model, prompt, output_model: <span class="st">type[BaseModel]</span>, *, image_path=None) → <span class="st">BaseModel | None</span>
+  <p>所有 LLM 呼叫收斂到單一抽象層(<code>llm.py</code>)的兩個函式,後端以環境變數 <code>LLM_BACKEND</code> 切換:</p>
+  <pre><code><span class="fn">complete</span>(model, prompt, *, max_tokens=2048, web_search=False, image_path=None) → str
+<span class="fn">complete_structured</span>(model, prompt, output_model: <span class="kw">type[BaseModel]</span>, *, image_path=None) → BaseModel | None
 <span class="cm"># 解析失敗回 None,呼叫端一律有保底路徑,pipeline 不中斷</span></code></pre>
   <table>
-    <thead><tr><th>後端</th><th>機制</th><th>web 搜尋</th><th>影像</th><th>結構化輸出</th><th>計費</th></tr></thead>
-    <tbody>
-      <tr><td><code>claude_code</code>(預設)</td><td>subprocess 呼叫 <code>claude -p --model &lt;alias&gt;</code>(headless),stdin 進 prompt、stdout 出回應,timeout 600s</td><td><code>--allowedTools WebSearch</code></td><td><code>--allowedTools Read</code> + prompt 指示讀取檔案路徑</td><td>prompt 附 JSON Schema 指示 → 容錯解析(剝 ``` 圍欄、取最外層 {}、Pydantic 驗證)</td><td>訂閱額度,$0</td></tr>
-      <tr><td><code>api</code></td><td>Anthropic SDK <code>messages.create / messages.parse</code></td><td><code>web_search_20260209</code> server tool,max_uses 5,含 pause_turn 續跑(上限 5 輪)</td><td>base64 image block</td><td><code>messages.parse(output_format=Model)</code> 原生保證</td><td>API 額度</td></tr>
-    </tbody>
+    <tr><th>後端</th><th>機制</th><th>web 搜尋</th><th>結構化輸出</th><th>計費</th></tr>
+    <tr><td><code>claude_code</code>(預設)</td><td>subprocess 呼叫 <code>claude -p --model &lt;alias&gt;</code>(headless),timeout 600s;<code>--append-system-prompt</code> 語言覆寫</td><td><code>--allowedTools WebSearch</code></td><td>prompt 附 JSON Schema → 容錯解析(剝圍欄、取最外層 {}、Pydantic 驗證)</td><td>訂閱額度,$0</td></tr>
+    <tr><td><code>api</code></td><td>Anthropic SDK <code>messages.create / messages.parse</code></td><td><code>web_search</code> server tool(含 pause_turn 續跑)</td><td><code>messages.parse(output_format=Model)</code> 原生保證</td><td>API 額度</td></tr>
   </table>
   <table>
-    <thead><tr><th>任務</th><th>模型常數</th><th>模型 ID</th><th>CLI 別名(可覆寫)</th></tr></thead>
-    <tbody>
-      <tr><td>清洗、欄位抽取、名片 OCR 結構化</td><td><code>MODEL_FAST</code></td><td><code>claude-haiku-4-5</code></td><td><code>haiku</code>(<code>CLI_MODEL_FAST</code>)</td></tr>
-      <tr><td>背景豐富、契合度判斷、信件/brief/follow-up 生成</td><td><code>MODEL_MID</code></td><td><code>claude-sonnet-5</code></td><td><code>sonnet</code>(<code>CLI_MODEL_MID</code>)</td></tr>
-      <tr><td>信件批判審稿(扮演美國 buyer)</td><td><code>MODEL_TOP</code></td><td><code>claude-opus-4-8</code></td><td><code>opus</code>(<code>CLI_MODEL_TOP</code>;訂閱無 Opus 時設 <code>sonnet</code>)</td></tr>
-    </tbody>
+    <tr><th>任務</th><th>模型常數</th><th>模型 ID</th><th>CLI 別名(可覆寫)</th></tr>
+    <tr><td>清洗、欄位抽取、名片 OCR 結構化</td><td><code>MODEL_FAST</code></td><td><code>claude-haiku-4-5</code></td><td><code>haiku</code>(<code>CLI_MODEL_FAST</code>)</td></tr>
+    <tr><td>背景豐富、契合度判斷、三輪信/brief/follow-up 生成</td><td><code>MODEL_MID</code></td><td><code>claude-sonnet-5</code></td><td><code>sonnet</code>(<code>CLI_MODEL_MID</code>)</td></tr>
+    <tr><td>信件批判審稿(扮演美國 buyer)</td><td><code>MODEL_TOP</code></td><td><code>claude-opus-4-8</code></td><td><code>opus</code>(<code>CLI_MODEL_TOP</code>;訂閱無 Opus 時設 <code>sonnet</code>)</td></tr>
   </table>
-  <p class="note"><code>claude</code> 執行檔解析順序(逐一驗證存在,斷掉的符號連結視同不存在):<code>CLAUDE_CLI</code> 環境變數 → PATH → <code>~/.local/bin/claude</code>(<strong>獨立版</strong>,官方 install.sh 安裝、自我更新)→ VSCode 擴充內建路徑自動搜尋(取最新,自癒後備)。教訓:勿以 VSCode 擴充資料夾做手工 symlink,擴充自動更新會斷鏈(2026-07-05 實際事故)。認證:CLI 走 Claude Code 登入;API 走 <code>ANTHROPIC_API_KEY</code> 或 <code>ant auth login</code> profile。</p>
+  <div class="callout"><p>claude 執行檔解析順序(逐一驗證存在,斷掉的符號連結視同不存在):<code>CLAUDE_CLI</code> 環境變數 → PATH → <code>~/.local/bin/claude</code>(獨立版)→ VSCode 擴充路徑自動搜尋(自癒後備)。全英文輸出三重防線:CLI 附加語言覆寫系統提示 + 生成後 CJK 正則偵測重寫 + Opus 審稿將非英文列 instant fail。</p></div>
 </section>
 
 <!-- 03 -->
 <section id="s03">
-  <div class="sec-label"><span class="no">03</span><h2>五層架構總覽</h2></div>
-  <div class="layer"><div class="ln">L1</div><div class="lc"><h4>資料擷取 Data Ingestion — 進料口</h4><small>四來源 → 統一 RawLead;指令 ingest</small>
-    <span class="chip">ApolloAdapter</span><span class="chip">PlacesAdapter(翻頁~60家)</span><span class="chip">HunterAdapter(網域反查)</span><span class="chip">IHAAdapter</span><span class="chip">ManualAdapter(Apollo/ImportYeti CSV 自動識別)</span></div></div>
+  <div class="sec-label"><span class="no">03</span><h2>架構總覽(六層 + Profile + UI)</h2></div>
+  <div class="layer"><div class="ln">P</div><div class="lc">
+    <h4>公司 Profile 層 — 通用化的單一事實來源(v3 新增)</h4>
+    <small>company/*.toml:價值主張/寄件人/campaign/競品;整條 pipeline 從此讀,換公司換檔案</small>
+    <span class="chip">company.py</span><span class="chip">COMPANY_PROFILE env</span>
+  </div></div>
   <div class="flow">▼</div>
-  <div class="layer"><div class="ln">L2</div><div class="lc"><h4>清洗豐富 Enrichment — 情報引擎</h4><small>去重(含聯絡人優先序+備援)→ email 驗證 → web 背景補全</small>
-    <span class="chip">rapidfuzz</span><span class="chip">Hunter.io</span><span class="chip">WebSearch</span><span class="chip model">Sonnet 查 + Haiku 抽</span></div></div>
+  <div class="layer"><div class="ln">L1</div><div class="lc">
+    <h4>資料擷取 — 進料口</h4>
+    <small>四來源 → 統一 RawLead;Web UI 匯入(預覽勾選後入庫)或 CLI ingest</small>
+    <span class="chip">ApolloAdapter</span><span class="chip">PlacesAdapter(翻頁~60家)</span><span class="chip">IHAAdapter</span><span class="chip">ManualAdapter(Apollo/ImportYeti CSV 自動識別)</span><span class="chip">Hunter 網域反查</span>
+  </div></div>
   <div class="flow">▼</div>
-  <div class="layer"><div class="ln">L3</div><div class="lc"><h4>評分分級 Scoring — 資源守門員</h4><small>規則+LLM 混合,四維加權 → A/B/C;T0/T3 特例</small>
-    <span class="chip">規則分數表</span><span class="chip model">Sonnet 判契合</span></div></div>
+  <div class="layer"><div class="ln">L2</div><div class="lc">
+    <h4>清洗豐富 — 情報引擎</h4>
+    <small>去重(聯絡人優先序+備援)→ email 驗證 → web 背景補全(研究基準由 Profile 提供)</small>
+    <span class="chip">rapidfuzz</span><span class="chip">Hunter.io</span><span class="chip model">Sonnet 查 + Haiku 抽</span>
+  </div></div>
   <div class="flow">▼</div>
-  <div class="layer"><div class="ln">L4</div><div class="lc"><h4>觸達引擎 Outreach — 產品出口</h4><small>生成 → Opus 審稿 → 重寫(≤3 輪)→ 人工覆核 → .eml/一鍵寄信</small>
-    <span class="chip">critique loop</span><span class="chip">outbox/.eml</span><span class="chip model">Sonnet 寫 + Opus 審</span></div></div>
+  <div class="layer"><div class="ln">L3</div><div class="lc">
+    <h4>評分分級 — 資源守門員</h4>
+    <small>規則+LLM 混合,四維加權 → A/B/C;T0/T3 特例;判斷基準由 Profile 提供</small>
+    <span class="chip">規則分數表</span><span class="chip model">Sonnet 判契合</span>
+  </div></div>
   <div class="flow">▼</div>
-  <div class="layer"><div class="ln">L5</div><div class="lc"><h4>展中/展後作戰 Field Ops — 收割紀律</h4><small>名片 OCR、company brief、follow-up、track 追蹤、看板</small>
-    <span class="chip">Web UI /card</span><span class="chip">track 六事件</span><span class="chip">即時儀表板</span><span class="chip model">Haiku + Sonnet</span></div></div>
+  <div class="layer"><div class="ln">L4</div><div class="lc">
+    <h4>觸達引擎 — 三輪信生成與品管</h4>
+    <small>seq1 生成 → Opus 審稿 ⇄ 重寫(≤3 輪)→ 預生成 seq2/3 → 人工覆核佇列</small>
+    <span class="chip">critique loop</span><span class="chip">反幻覺鐵則</span><span class="chip model">Sonnet 寫 + Opus 審</span>
+  </div></div>
+  <div class="flow">▼ 人工核准(一次涵蓋整串)</div>
+  <div class="layer"><div class="ln">L6</div><div class="lc">
+    <h4>送後引擎 — 核准之後全自動(v3 新增;零 LLM)</h4>
+    <small>三輪排程(+0/+4/+6 工作日,buyer 當地時段)→ 佇列狀態機 → 排程器一次寄一封(暖機限流+interval 護欄)→ 回信/退訂/bounce 自動煞車</small>
+    <span class="chip">email_queue</span><span class="chip">schedule.py</span><span class="chip">dispatcher.py</span><span class="chip">footer.py(CAN-SPAM)</span><span class="chip">gmail.py / eml</span>
+  </div></div>
   <div class="flow">▼</div>
-  <div class="layer"><div class="ln">UI</div><div class="lc"><h4>操作介面 Web UI — 唯一日常入口</h4><small>buyer-intel serve → http://localhost:8000;CLI 為腳本化備援,共用 actions.py 業務層</small>
-    <span class="chip">FastAPI 伺服端渲染</span><span class="chip">背景任務+即時日誌</span><span class="chip">零外部前端依賴</span></div></div>
+  <div class="layer"><div class="ln">L5</div><div class="lc">
+    <h4>展中/展後作戰 — 收割紀律</h4>
+    <small>名片 OCR、company brief、same-day follow-up(warm 通道不受冷限流)、track、看板</small>
+    <span class="chip">/card 手機頁</span><span class="chip">track 六事件</span><span class="chip model">Haiku + Sonnet</span>
+  </div></div>
+  <div class="flow">▼</div>
+  <div class="layer"><div class="ln">UI</div><div class="lc">
+    <h4>操作介面 — 唯一日常入口</h4>
+    <small>buyer-intel serve → http://localhost:8000;背景寄送排程器隨 serve 啟動;CLI 為腳本化備援,共用 actions.py</small>
+    <span class="chip">FastAPI 伺服端渲染</span><span class="chip">背景任務+即時日誌</span><span class="chip">零外部前端依賴</span>
+  </div></div>
 </section>
 
 <!-- 04 -->
 <section id="s04">
-  <div class="sec-label"><span class="no">04</span><h2>L1 資料擷取層 — 完整規格</h2></div>
+  <div class="sec-label"><span class="no">04</span><h2>公司 Profile 層 — 完整規格(v3 新增)</h2></div>
+  <p class="lead">系統與「哪一家公司」解耦:所有公司身分集中在一個 TOML 檔,<code>company.py</code> 載入為 Pydantic 模型,outreach / enrich / scoring / brief / footer / UI 品牌全部從此讀。<strong>今天 Ankomn、明天任何產業:複製 toml 改內容,程式碼零修改</strong>(已以虛構塑膠代工公司端對端驗證:信件、footer、研究 prompt 全部跟隨切換,零殘留)。</p>
+  <pre><code><span class="cm"># company/ankomn.toml(單一事實來源;COMPANY_PROFILE 環境變數可指向其他檔)</span>
+[company]   name / description / <span class="st">value_proposition</span>(英文一句話,寫信用)/ industry / website
+[sender]    name / title / <span class="st">email</span>(=OAuth 帳號)/ phone / <span class="st">address</span>(CAN-SPAM 必填實體地址)
+[campaign]  <span class="st">type</span> = "trade_show" | "general"  <span class="cm"># 展會帶攤位+預約連結;general 純開發信</span>
+            name / detail / booth / booking_url
+[targeting] channel_priority(通路優先序,餵 L2 研究與 L3 評分)
+            competitors[](競品清單,餵研究與「已賣競品」判定)
+            category_keywords[](品類職稱關鍵字,餵去重時的主收件人優先序)</code></pre>
   <table>
-    <thead><tr><th>Adapter</th><th>端點/輸入</th><th>參數</th><th>產出與備註</th></tr></thead>
-    <tbody>
-      <tr><td><code>ApolloAdapter</code></td><td><code>POST api.apollo.io/api/v1/mixed_people/search</code>,金鑰放 <code>X-Api-Key</code></td><td><code>keywords</code>、<code>locations</code>(預設 WA/OR/TX)、<code>titles</code>(預設 Buyer/Category Manager/Merchandising/Purchasing/Owner/Founder)、<code>per_page=25</code></td><td>公司+決策人+email。<span class="warn">403 API_INACCESSIBLE(免費方案)時拋出含替代路徑的明確錯誤</span></td></tr>
-      <tr><td><code>PlacesAdapter</code></td><td><code>POST places.googleapis.com/v1/places:searchText</code>(Places API New),FieldMask 僅 displayName/formattedAddress/websiteUri/<strong>nextPageToken</strong></td><td><code>query</code>(自然語言「類別 in 城市, 州」)、<code>max_results=60</code></td><td>只有店名/網站/州(<strong>不含 email</strong>);<strong>自動翻頁</strong>:單頁上限 20,靠 nextPageToken 湊到 ~60 家(單一查詢 Google 上限)。notes 註記「需回頭用 Hunter 網域反查找決策人」</td></tr>
-      <tr><td><code>HunterAdapter</code>(網域反查)</td><td><code>GET api.hunter.io/v2/domain-search</code>,金鑰 <code>api_key</code></td><td>公司網域(通常來自 Places 掃到的 websiteUri)</td><td>接 Places 的第二棒:拿網域反查該公司公開署名的決策人 email(帶姓名/職稱/可信度)。實測獨立烘豆商可挖出多位帶職稱、可信度 97–99 的聯絡人——正面補齊 Apollo 對小店的覆蓋盲區</td></tr>
-      <tr><td><code>IHAAdapter</code></td><td>展商名錄 CSV</td><td><code>file</code>、<code>tier</code>(預設 T0_rep)</td><td>欄位別名映射(COLUMN_MAP 可調);T0 Rep 名單核心來源</td></tr>
-      <tr><td><code>ManualAdapter</code></td><td>任意 CSV</td><td><code>file</code>、<code>tier</code>(列級 tier 欄優先,否則用參數)</td><td><strong>雙格式自動識別</strong>:簡易格式(company/contact_name/…)與 Apollo 匯出格式(First/Last Name 自動合併;Company/State/Company State 別名映射;Industry、# Employees、Email Status 收進 notes)</td></tr>
-    </tbody>
+    <tr><th>consumer</th><th>取用內容</th></tr>
+    <tr><td><code>outreach.draft_email / draft_followups</code></td><td>name、value_proposition、campaign(展會資訊或一般 CTA)、sender.name 署名</td></tr>
+    <tr><td><code>enrich.research_company</code></td><td>name、description、channel_priority、competitors(研究「是否已賣競品」)</td></tr>
+    <tr><td><code>enrich._contact_priority</code></td><td>category_keywords(空值回退內建通用清單)</td></tr>
+    <tr><td><code>scoring.llm_fit_judgment</code></td><td>name、value_proposition、channel_priority、competitors</td></tr>
+    <tr><td><code>sending/footer.py</code></td><td>sender 全欄位 + website(簽名與合規 footer);<code>address_ready</code> 檢查佔位字</td></tr>
+    <tr><td><code>field_ops/brief.py</code>、Web UI 品牌、<code>actions.split_subject</code> 保底主旨</td><td>name、campaign</td></tr>
   </table>
-  <h4>ManualAdapter 欄位別名表(依序取第一個有值者;個人欄位優先於公司欄位)</h4>
-  <pre><code>company      ← company | company name | organization | company name for emails
-contact_name ← contact_name | full name | name | contact(無則 first name + last name 合併)
-title        ← title | job title
-email        ← email | work email
-website      ← website | company website | url
-city         ← city | company city
-state        ← state | company state
-notes 附加   ← industry(產業)、# employees(員工數)、email status(Apollo 驗證狀態)</code></pre>
+  <div class="callout"><p><strong>已知邊界:</strong>評分權重/地區優先序(PNW/TX…)與 Tier 分類(T1_coffee 等)屬「戰略層」,仍在 <code>config.py</code> / <code>models.py</code>——換公司時需人工調整,尚未 profile 化(見 17 章)。<strong>快取注意:</strong><code>get_company()</code> 有 lru_cache,改 toml 後需重啟 serve(技術債 #6)。</p></div>
 </section>
 
 <!-- 05 -->
 <section id="s05">
-  <div class="sec-label"><span class="no">05</span><h2>L2 清洗豐富層 — 完整規格</h2></div>
-  <h3>5.1 去重演算法(dedupe)</h3>
-  <p><strong>同一家公司的判定(任一成立即同公司):</strong></p>
-  <ul>
-    <li><strong>公司 email 網域相同</strong>——但免費信箱不算證據:<code>gmail.com / yahoo.com / outlook.com / hotmail.com / icloud.com / aol.com / live.com / msn.com / me.com / protonmail.com / proton.me</code> 一律排除(兩家小店都用 gmail ≠ 同一家)</li>
-    <li><strong>公司名正規化後模糊比對 ≥ 90</strong>(rapidfuzz token_sort_ratio):正規化 = 轉小寫 → 剝除法律後綴(inc/llc/ltd/corp/corporation/co/company/group/holdings)→ 去標點</li>
-  </ul>
-  <p><strong>同公司多聯絡人時保留誰(_contact_priority,降冪排序):</strong></p>
+  <div class="sec-label"><span class="no">05</span><h2>L1 資料擷取層 — 完整規格</h2></div>
   <table>
-    <thead><tr><th>優先級</th><th>條件(職稱關鍵字,不分大小寫)</th><th>邏輯</th></tr></thead>
-    <tbody>
-      <tr><td>4(最高)</td><td>買手詞(buyer/category/purchas/merchandis)<strong>且</strong>品類詞(hardgood/housewares/home/kitchen/coffee/seasonal/decor/tabletop/gourmet)</td><td>品類對口買手就是門</td></tr>
-      <tr><td>3</td><td>owner / founder / ceo / president</td><td>小店店主即採購;公司大到有品類買手時買手勝出</td></tr>
-      <tr><td>2</td><td>泛買手詞</td><td>在採購鏈上</td></tr>
-      <tr><td>1</td><td>有職稱</td><td rowspan="2">同級以欄位完整度(email/姓名/職稱/網站計數)決勝</td></tr>
-      <tr><td>0</td><td>無職稱</td></tr>
-    </tbody>
+    <tr><th>Adapter</th><th>端點/輸入</th><th>參數</th><th>產出與備註</th></tr>
+    <tr><td><code>ApolloAdapter</code></td><td>POST <code>api.apollo.io/api/v1/mixed_people/search</code>,金鑰 <code>X-Api-Key</code></td><td><code>keywords</code>、<code>locations</code>(預設 WA/OR/TX)、<code>titles</code>(預設 Buyer/Category Manager/…/Owner/Founder)、<code>per_page=25</code></td><td>公司+決策人+email。<strong>403 API_INACCESSIBLE(免費方案)時拋出含替代路徑的明確錯誤</strong>(網頁匯出 CSV → ManualAdapter)</td></tr>
+    <tr><td><code>PlacesAdapter</code></td><td>POST <code>places.googleapis.com/v1/places:searchText</code>(Places API New),FieldMask 僅四欄</td><td><code>query</code>(「類別 in 城市, 州」)、<code>max_results=60</code></td><td>只有店名/網站/州(不含 email);自動翻頁(單頁 20,nextPageToken 湊 ~60);notes 註記「需 Hunter 反查決策人」</td></tr>
+    <tr><td>Hunter 網域反查(<code>enrich.find_contacts_by_domain</code>)</td><td>GET <code>api.hunter.io/v2/domain-search</code></td><td>公司網域(來自 Places 的 websiteUri)</td><td>接 Places 第二棒:反查公開署名決策人(姓名/職稱/可信度),依部門×資深度排序;只收具名,generic(info@)另存退路。實測獨立烘豆商挖出可信度 97–99 的多位決策人</td></tr>
+    <tr><td><code>IHAAdapter</code></td><td>展商名錄 CSV</td><td><code>file</code>、<code>tier</code>(預設 T0_rep)</td><td>欄位別名映射(COLUMN_MAP 可調);T0 Rep 名單核心來源</td></tr>
+    <tr><td><code>ManualAdapter</code></td><td>任意 CSV</td><td><code>file</code>、<code>tier</code>(列級 tier 欄優先)</td><td><strong>多格式自動識別</strong>:簡易格式 / Apollo 匯出(First/Last Name 合併;Industry、# Employees、Email Status 收進 notes)/ ImportYeti(認得 Consignee 欄)</td></tr>
   </table>
-  <p><strong>全部聯絡人保留(不丟任何人):</strong>同公司其他聯絡人結構化存入 <code>alt_contacts</code>(姓名/職稱/email 完整保留);UI 詳情頁列出全部聯絡人,<strong>「設為主收件人」一鍵切換</strong>(原主收件人退為備選,換人自動重置 email 驗證旗標)——優先序演算法只決定預設值,收件人最終由人判斷。verbose 模式逐筆印「✂ 併入備選 …(同公司已保留 ○○○(職稱)——判定依據:…)」。</p>
-  <h3>5.2 email 驗證(verify_email)</h3>
-  <p><code>GET api.hunter.io/v2/email-verifier</code>;狀態 <code>valid / accept_all / webmail</code> 判定有效。未設金鑰或網路錯誤 → 標 <code>email_verified=False</code>,不阻擋流程(覆核時人工注意)。</p>
-  <p><strong>執行時機(v2 修正):</strong>在 <strong>pipeline L2 背景節點</strong>執行(enrich_lead 開頭),不在匯入時——同步逐筆打 API 曾使數十筆匯入卡住 UI 逾一分鐘;背景長工作多 1 秒/筆無感。例外:UI 手動修改信箱或切換主收件人時當場驗證該筆(~1 秒)。順序保證:驗證必發生於覆核寄信之前(pipeline → review)。</p>
-  <h3>5.3 背景豐富(兩段式)</h3>
-  <table>
-    <thead><tr><th>步驟</th><th>模型</th><th>Prompt 規格</th><th>輸出</th></tr></thead>
-    <tbody>
-      <tr><td>research_company</td><td>Sonnet + WebSearch(≤5 次)</td><td>以公司名+網站+城市查:(1)門市數或純電商 (2)通路類型(咖啡器材電商/烘豆連鎖/廚房專賣/一般零售/rep group)(3)是否已賣競品(Fellow Atmos、Planetary Design、Airscape、OXO POP)(4)營收規模;≤200 字</td><td>自由文字摘要</td></tr>
-      <tr><td>extract_facts</td><td>Haiku(結構化)</td><td>從摘要抽欄位,不確定者留 null</td><td><code>EnrichmentFacts{store_count, sells_competitors, channel_type, revenue_band, summary}</code>;解析失敗保底 = 只留原摘要</td></tr>
-    </tbody>
-  </table>
-  <p>回填 Lead:<code>store_count / sells_competitors / enrichment_notes</code>。州別入庫時正規化為縮寫(50 州全名對照表,Apollo「Illinois」與 Places「IL」統一);地區僅供評分權重內部使用:WA,OR→PNW;TX→TX;CA→CA;NY,NJ,CT→NY;IL,WI,MI,MN,OH,IN→MIDWEST;其他→OTHER。<strong>UI 與篩選一律用州名。</strong></p>
+  <p class="note">Web UI 匯入流程:上傳/掃描 → 去重與庫內比對 → <strong>預覽頁逐筆勾選</strong>(未入庫)→ 確認才寫入;來源標籤自選(Apollo/LinkedIn/Stockists/ImportYeti/…)供轉化率歸因;CSV 原檔留存 <code>imports/</code>。</p>
 </section>
 
 <!-- 06 -->
 <section id="s06">
-  <div class="sec-label"><span class="no">06</span><h2>L3 評分分級層 — 完整規格</h2></div>
-  <h3>6.1 特例(先於一切,零 LLM 成本)</h3>
+  <div class="sec-label"><span class="no">06</span><h2>L2 清洗豐富層 — 完整規格</h2></div>
+  <h3>6.1 去重演算法(dedupe)</h3>
+  <ul>
+    <li><strong>同公司判定(任一成立):</strong>公司 email 網域相同(<strong>免費信箱不算證據</strong>:gmail/yahoo/outlook/… 排除)或公司名正規化後 rapidfuzz token_sort_ratio ≥ 90(正規化=小寫→剝法律後綴 inc/llc/…→去標點)</li>
+    <li><strong>保留誰(_contact_priority):</strong>品類對口買手(買手詞 × 品類詞——品類詞來自 <strong>Profile targeting.category_keywords</strong>,空值回退內建清單)&gt; Owner/Founder/CEO &gt; 泛買手 &gt; 有職稱 &gt; 無;同級以欄位完整度決勝</li>
+    <li><strong>全部聯絡人保留:</strong>落選者結構化存 <code>alt_contacts</code>;UI 一鍵切換主收件人(原主退為備選,換人自動重驗 email)</li>
+  </ul>
+  <h3>6.2 email 驗證(Hunter)</h3>
+  <p>GET <code>email-verifier</code>;valid / accept_all / webmail 判有效。<strong>執行時機:pipeline L2 背景</strong>(匯入保持秒進);UI 手動改信箱/換人時即時驗單筆。未設金鑰標未驗證,不阻擋。</p>
+  <h3>6.3 背景豐富(兩段式)</h3>
   <table>
-    <thead><tr><th>條件</th><th>處置</th><th>依據</th></tr></thead>
-    <tbody>
-      <tr><td><code>tier == T3_mass</code></td><td class="warn">score=None、grade=None、stage=archived,rationale 載明戰略依據;CLI 入口另有一道攔截(連 L2 都不跑)</td><td>戰略:第一年不主動進攻;被動接觸走 L5 交 Rep 評估</td></tr>
-      <tr><td><code>tier == T0_rep</code></td><td class="ok">score=None、grade=A 直通 L4(獨立信件模板:代理合作而非批發)</td><td>Rep 不套零售商評分</td></tr>
-    </tbody>
+    <tr><th>步驟</th><th>模型</th><th>Prompt 規格</th><th>輸出</th></tr>
+    <tr><td>research_company</td><td>Sonnet + WebSearch(≤5 次)</td><td>以公司名+網站+城市查:(1)門市數或純電商(2)通路類型(<strong>相關通路清單由 Profile channel_priority 提供</strong>)(3)是否已賣競品(<strong>競品清單由 Profile 提供</strong>)(4)營收規模;≤200 字</td><td>自由文字摘要</td></tr>
+    <tr><td>extract_facts</td><td>Haiku(結構化)</td><td>從摘要抽欄位,不確定留 null</td><td><code>EnrichmentFacts{store_count, sells_competitors, channel_type, revenue_band, summary}</code>;解析失敗保底=只留原摘要</td></tr>
   </table>
-  <h3>6.2 一般評分:總分 = 0.40×通路契合 + 0.25×規模 + 0.20×地區 + 0.15×決策權</h3>
-  <p><strong>設計原則:能用規則算的用規則(透明、零成本、可複查),需要判斷的才交給 AI。</strong>四維中三維(規模/地區/決策權規則部分)是明文死規則,分數表如下、權重全在 <code>config.py</code> 可改;只有通路契合 40% 與決策權的一半是 LLM 判斷。整筆結果不是黑箱——每筆寫入白話 <code>score_rationale</code>(各維得分 + LLM 加減分理由),資料庫存、Web UI 名單詳情頁「評分依據」欄直接顯示。</p>
-  <table>
-    <thead><tr><th>維度(權重)</th><th>計算方式</th><th>分數表</th></tr></thead>
-    <tbody>
-      <tr><td>通路契合(40%)</td><td>LLM(Sonnet 結構化):輸入公司/職稱/tier/背景摘要,輸出 <code>FitJudgment{channel_fit_score 0-100, authority_score 0-100, rationale}</code>;prompt 載明優先序「咖啡器材 &gt; 廚房專賣 &gt; 一般零售」與「已賣競品加分」;解析失敗保底 = 雙 50 分中性</td><td>0–100</td></tr>
-      <tr><td>規模適配(25%)</td><td>規則,store_count</td><td>5–100 家=100;&lt;5=60;101–500=40;&gt;500=15;未知=50</td></tr>
-      <tr><td>地區(20%)</td><td>規則,region</td><td>PNW=100、TX=100、CA=80、NY=80、MIDWEST=60、OTHER=30</td></tr>
-      <tr><td>決策權(15%)</td><td>(規則 + LLM authority_score)÷2;規則 = 職稱關鍵字</td><td>owner/founder=100、ceo/president=95、buyer/category manager=90、merchandis/purchasing=85、director=70、manager=55、其他/無=30</td></tr>
-    </tbody>
-  </table>
-  <h3>6.3 分級與條件分流</h3>
-  <p><strong>≥70 → A</strong>(進 L4,信件逐封人工覆核);<strong>50–69 → B</strong>(進 L4);<strong>&lt;50 → C</strong>(stage=archived,不觸達,不再花任何成本)。每筆寫入完整 <code>score_rationale</code>(各維分數+LLM 理由)。</p>
-  <div class="callout"><p><strong>實測校準:</strong>首批名單 P1 地區公司全數 A(73–78 分)、NY 71 分 A、KY(OTHER)62.7 B、29,000 人飲料集團被 T3/低契合攔下——與戰略地區優先序一致,權重免調。</p></div>
-  <div class="callout"><p><strong>透明度實例(Intelligentsia Coffee):</strong>通路契合 82(40%)、規模 100(14 家店在甜蜜點,25%)、地區 60(IL,20%)、決策權 52(15%)→ 總分 77.7 = A。LLM 加分理由「官網已賣 Fellow Atmos,品類有貨架」;<strong>扣分理由「但聯絡人是 Green Coffee Buyer——採購生豆的上游,與零售端器材選品分屬不同部門,對配件上架影響力有限」</strong>。此即 AI 的價值:規則看職稱都有 Buyer 字樣分不出,AI 讀懂咖啡業部門分工、把決策權從高分壓到 52。整段理由 UI 可見,人可審計、可覆核時推翻。</p></div>
+  <p class="note">州別入庫正規化為縮寫(50 州全名對照);地區僅供評分內部(WA,OR→PNW;TX;CA;NY,NJ,CT→NY;IL,WI,MI,MN,OH,IN→MIDWEST;其他→OTHER),UI 一律顯示州名。</p>
 </section>
 
 <!-- 07 -->
 <section id="s07">
-  <div class="sec-label"><span class="no">07</span><h2>L4 觸達引擎 — 完整規格</h2></div>
-  <h3>7.1 信件生成(draft_email,Sonnet)— 硬性要求(prompt 載明)</h3>
-  <ul>
-    <li><strong>全英文三重防線</strong>:(1)claude -p 附加 <code>--append-system-prompt</code> 語言覆寫(壓過使用者全域 CLAUDE.md 的「一律中文回覆」指令,此為實測發現的 CJK 混入根因);(2)生成後 CJK 正則偵測(含日文假名),命中即帶警告重生成一次;(3)Opus 審稿把「含任何非英文字元」列為 instant fail</li>
-    <li>純文字、<strong>&lt;150 字</strong>、第一行 <code>Subject: …</code>、無列點、無 emoji、無 hype 詞</li>
-    <li>一句話價值主張(固定敘事:台灣設計製造手搖真空棘輪、免電池免泵、內部保鮮實測)</li>
-    <li><strong>為何找上「這一家」的具體理由——只准使用 L2 查到的事實,嚴禁捏造</strong>;查無資料時保持誠實泛寫</li>
-    <li>TIHS 攤位資訊(env:TIHS_BOOTH)+ Calendly 連結(env:CALENDLY_URL)</li>
-    <li>T0_rep 改走代理合作敘事(line representation、佣金制、美國零售關係),不談批發採購</li>
-    <li>重寫輪帶入審稿者 rewrite_hints</li>
-  </ul>
-  <h3>7.2 審稿(critique_email,Opus)— fail 條件(任一成立即 revise)</h3>
-  <p>角色設定:「你是 {company} 的 buyer,一天收幾十封供應商冷信,見罐頭即刪」。輸出 <code>CritiqueResult{verdict: pass|revise, issues[], rewrite_hints}</code>。fail 條件:超過 150 字/像模板/「為何是你們」理由空泛或捏造/價值主張不清/語氣推銷味或浮誇/缺攤位或預約連結。解析失敗保底 = pass 並標注「請人工加強檢查」(人是最後防線)。</p>
-  <h3>7.3 迴圈與覆核</h3>
-  <p>draft ⇄ critique 最多 <strong>3 輪</strong>,超限強制進覆核。過稿 → <code>pending_draft</code> 掛上 lead 入庫。<code>review</code> 指令逐封顯示草稿+評分依據:<strong>y</strong>=核准(輸出 <code>outbox/&lt;id&gt;_&lt;公司&gt;.eml</code>,含 To/Subject/X-Unsent 標頭;stage→contacted;排 5 天後跟進;無 email 者警示)/<strong>n</strong>=退回清稿/<strong>s</strong>=跳過。</p>
-  <h3>7.4 寄送(send)</h3>
-  <p><code>send &lt;id&gt;</code> → 取最後一封核准信 → <code>mailto:</code> URL(收件人/主旨/內文 URL-encode)→ 開啟預設郵件軟體撰寫視窗。<strong>寄送鍵永遠由人按。</strong></p>
+  <div class="sec-label"><span class="no">07</span><h2>L3 評分分級層 — 完整規格</h2></div>
+  <h3>7.1 特例(先於一切,零 LLM 成本)</h3>
+  <table>
+    <tr><th>條件</th><th>處置</th><th>依據</th></tr>
+    <tr><td><code>tier == T3_mass</code></td><td>score=None、stage=archived,rationale 載明戰略依據;pipeline 入口另有一道攔截(連 L2 都不跑)</td><td>戰略:第一年不主動進攻;被動接觸走 L5 交 Rep</td></tr>
+    <tr><td><code>tier == T0_rep</code></td><td>grade=A 直通 L4(獨立信件模板:代理合作而非批發)</td><td>Rep 不套零售商評分</td></tr>
+    <tr><td>company 以 🧪 開頭(測試 lead)</td><td>pipeline 入口跳過(v3 新增:寄測試信功能建立的 lead 不花研究額度)</td><td>—</td></tr>
+  </table>
+  <h3>7.2 一般評分:總分 = 0.40×通路契合 + 0.25×規模 + 0.20×地區 + 0.15×決策權</h3>
+  <table>
+    <tr><th>維度(權重)</th><th>計算方式</th><th>分數表</th></tr>
+    <tr><td>通路契合(40%)</td><td>LLM(Sonnet 結構化,判斷基準來自 <strong>Profile</strong>):輸出 <code>FitJudgment{channel_fit_score, authority_score, rationale}</code>;解析失敗保底=雙 50 中性</td><td>0–100</td></tr>
+    <tr><td>規模適配(25%)</td><td>規則,store_count</td><td>5–100 家=100;&lt;5=60;101–500=40;&gt;500=15;未知=50</td></tr>
+    <tr><td>地區(20%)</td><td>規則,region</td><td>PNW=100、TX=100、CA=80、NY=80、MIDWEST=60、OTHER=30</td></tr>
+    <tr><td>決策權(15%)</td><td>(規則+LLM authority)÷2;規則=職稱關鍵字</td><td>owner/founder=100、ceo/president=95、buyer/category manager=90、merchandis/purchasing=85、director=70、manager=55、其他=30</td></tr>
+  </table>
+  <p>分級:≥70 → <strong>A</strong>;50–69 → <strong>B</strong>;&lt;50 → <strong>C</strong>(archived,不再花成本)。每筆寫入白話 <code>score_rationale</code>,UI 詳情頁直接顯示,可審計、覆核可推翻。評分過關(A/B)且缺 email 有網站者,才呼叫 Hunter 反查補聯絡人(省額度)。</p>
 </section>
 
 <!-- 08 -->
 <section id="s08">
-  <div class="sec-label"><span class="no">08</span><h2>L5 展中/展後作戰層 — 完整規格</h2></div>
-  <h3>8.1 Web UI(serve,FastAPI,0.0.0.0:8000)— 全系統操作介面</h3>
-  <table>
-    <thead><tr><th>頁面/端點</th><th>功能</th></tr></thead>
-    <tbody>
-      <tr><td><code>GET /</code> 儀表板</td><td>八階段漏斗統計、逾期未跟進警示表、背景任務狀態卡、快速入口</td></tr>
-      <tr><td><code>GET /leads</code>、<code>GET /leads/{id}</code></td><td>名單列表(階段/分級篩選、關鍵字搜尋)與詳情頁:評分依據、背景情報、互動時間軸、<strong>全部聯絡人表(主收件人 + 備選,一鍵切換)</strong>、聯絡方式線上補正(換 email/換人自動重置驗證旗標)</td></tr>
-      <tr><td><code>POST /leads/{id}/track</code></td><td>六事件追蹤按鈕(回信/會議/樣品/報價/PO/歸檔)→ 推進階段 + 自動排期</td></tr>
-      <tr><td><code>GET /review</code>、<code>POST /review/{id}/approve|reject</code></td><td>覆核佇列:草稿<strong>線上直接改稿</strong>後核准 → 輸出 .eml + 顯示「📮 開啟郵件寄出」mailto 按鈕;或退回清稿</td></tr>
-      <tr><td><code>GET|POST /import</code>、<code>POST /scan</code></td><td>① CSV 上傳(Apollo 格式自動識別、<strong>自選來源標籤</strong>、秒進不卡)② <strong>Google 地圖掃描</strong>(自訂搜尋句「業態 in 城市, 州」);去重明細與統計即時顯示,CSV 留存 imports/</td></tr>
-      <tr><td><code>GET /pipeline</code>、<code>POST /pipeline/start</code>、<code>GET /jobs/status</code></td><td>背景執行(可關頁),前端每 2 秒輪詢任務日誌;參數:<strong>州 × 來源</strong>(下拉附各項筆數)、筆數上限、平行數(1–5)</td></tr>
-      <tr><td><code>POST /followup/start</code></td><td>展中每晚批次:met_at_show 全員生成 same-day follow-up 進覆核佇列</td></tr>
-      <tr><td><code>GET|POST /wipe</code></td><td>清空全部資料:確認頁明列刪除範圍(名單/checkpoints/outbox,保留 imports/),<strong>須輸入大寫 DELETE</strong> 才執行;背景任務中禁用</td></tr>
-      <tr><td><code>POST /leads/{id}/delete</code></td><td>單筆刪除(前端確認框);<code>POST /leads/{id}/primary/{idx}</code> 切換主收件人並即時重驗 email</td></tr>
-      <tr><td><code>GET|POST /card</code>、<code>POST /card/note/{id}</code></td><td>名片掃描(手機):OCR → 庫內比對(預約客戶 vs 新接觸)→ 建檔 stage=met_at_show、排隔日跟進 → 即時 company brief + 會談紀錄</td></tr>
-    </tbody>
-  </table>
-  <p>背景任務由 <code>webui/jobs.py</code> 管理:單一任務槽 + 執行緒 + 帶時間戳日誌;所有業務動作(核准/退回/track/mailto)走 <code>actions.py</code>,與 CLI 共用同一份邏輯。</p>
-  <p><strong>company brief(Sonnet)四段結構:</strong>(1)這家是誰:通路/規模/是否賣競品 (2)該怎麼談:wholesale 直供或走 rep (3)建議報價版本:FOB 或 DDP+理由 (4)一句英文客製開場白。</p>
-  <h3>8.2 每晚批次(followup)</h3>
-  <p>對所有 stage=met_at_show 且無待審草稿者,依當日會談紀錄生成 same-day follow-up(Sonnet,&lt;120 字、必須引用會談具體內容、載明下一步)→ 進覆核佇列 → review 掃過寄出。<strong>支撐 KPI:24 小時跟進率 100%。</strong></p>
-  <h3>8.3 追蹤指令(track)— 事件表</h3>
-  <table>
-    <thead><tr><th>事件</th><th>stage 變為</th><th>next_action_due</th><th>語意</th></tr></thead>
-    <tbody>
-      <tr><td><code>replied</code></td><td>followed_up</td><td>+2 天</td><td>對方回信,對話進行中</td></tr>
-      <tr><td><code>meeting</code></td><td>meeting_booked</td><td>+7 天</td><td>敲定會議</td></tr>
-      <tr><td><code>sample</code></td><td>sample_sent</td><td>+7 天</td><td>樣品寄出,追到貨與回饋</td></tr>
-      <tr><td><code>quote</code></td><td>quoting</td><td>+5 天</td><td>報價中,追決策</td></tr>
-      <tr><td><code>po</code></td><td>po_received</td><td>清除</td><td>🎉 成交</td></tr>
-      <tr><td><code>dead</code></td><td>archived</td><td>清除</td><td>判定無望</td></tr>
-    </tbody>
-  </table>
-  <h3>8.4 看板(dashboard)</h3>
-  <p>靜態 HTML:八階段漏斗計數 + <strong>逾期未跟進紅色警示表</strong>(next_action_due &lt; 今天且未歸檔)+ 全名單表(依分級排序)。</p>
+  <div class="sec-label"><span class="no">08</span><h2>L4 觸達引擎 — 三輪信生成與品管(v3 擴充)</h2></div>
+  <h3>8.1 seq1 生成(draft_email,Sonnet)</h3>
+  <ul>
+    <li>寄件身分/價值主張/campaign 全部由 <strong>Profile</strong> 注入;campaign type=trade_show 帶攤位+預約連結,general 改低門檻 CTA</li>
+    <li>硬規則(prompt 載明):全英文、純文字、&lt;150 字、首行 <code>Subject: …</code>、一句話價值主張、<strong>「為何是這一家」只准用 L2 事實、嚴禁捏造</strong>、無 hype 詞/emoji、T0_rep 走代理合作敘事</li>
+    <li>全英文三重防線:CLI 語言覆寫 + CJK 正則重生成 + Opus 審稿 instant fail</li>
+  </ul>
+  <h3>8.2 審稿(critique_email,Opus)</h3>
+  <p>角色:「你是 {company} 的 buyer,一天收幾十封冷信,見罐頭即刪」。fail 條件(任一即 revise):非英文/超 150 字/像模板/理由空泛或捏造/價值主張不清/推銷味/缺攤位或連結(展會模式)。<code>draft ⇄ critique</code> 最多 3 輪,超限強制進覆核(人是最後防線)。</p>
+  <h3>8.3 seq2/3 預生成(draft_followups,v3 新增)</h3>
+  <ul>
+    <li>seq1 過稿後<strong>一次結構化呼叫</strong>生成兩封跟進(<code>FollowUpDrafts{seq2, seq3}</code>;解析失敗回退兩次純文字呼叫)</li>
+    <li><strong>seq2(價值信,+4 工作日):</strong>&lt;100 字;一句帶過前信;補一個具體角度;<strong>反幻覺鐵則:只准用已知事實,嚴禁編造統計/案例/客戶名</strong>;軟 CTA + 給台階;禁句 "Just following up" / "Bumping this" / 重複推銷</li>
+    <li><strong>seq3(graceful 收尾,+6 工作日):</strong>&lt;60 字;開頭明說最後一封;<strong>零 CTA</strong>;開未來大門;禁 guilt-trip/自貶/last-chance</li>
+    <li>主旨統一 <code>Re: &lt;seq1 主旨&gt;</code> 維持同串;生成失敗不擋 seq1 覆核(UI 顯示補生成提示)</li>
+    <li>三封掛上 lead(<code>pending_draft</code> + <code>pending_followups</code>)進覆核佇列——<strong>核准一次涵蓋整串</strong></li>
+  </ul>
 </section>
 
 <!-- 09 -->
 <section id="s09">
-  <div class="sec-label"><span class="no">09</span><h2>資料模型(Pydantic,完整欄位)</h2></div>
-<pre><code><span class="kw">class</span> <span class="fn">Lead</span>(BaseModel):
-    id: <span class="st">int</span> | <span class="kw">None</span>                       <span class="cm"># SQLite rowid</span>
-    <span class="cm"># 身分</span>
-    company: <span class="st">str</span>;  contact_name/title/email/website/city/state: <span class="st">str</span> | <span class="kw">None</span>
-    email_verified: <span class="st">bool</span> = <span class="kw">False</span>;  source: <span class="st">str</span>   <span class="cm"># apollo/places/iha/manual/ocr</span>
-    <span class="cm"># 分類</span>
-    tier: <span class="st">"T0_rep|T1_coffee|T2_kitchen|T3_mass"</span>
-    region: <span class="st">"PNW|TX|CA|NY|MIDWEST|OTHER"</span>
-    store_count: <span class="st">int</span> | <span class="kw">None</span>;  sells_competitors: <span class="st">bool</span> | <span class="kw">None</span>
-    enrichment_notes: <span class="st">str</span> | <span class="kw">None</span>            <span class="cm"># 背景摘要 + 備援聯絡人</span>
-    <span class="cm"># 評分</span>
-    score: <span class="st">float</span> | <span class="kw">None</span>;  grade: <span class="st">"A|B|C"</span> | <span class="kw">None</span>;  score_rationale: <span class="st">str</span> | <span class="kw">None</span>
-    <span class="cm"># Pipeline</span>
-    stage: <span class="st">"new→contacted→meeting_booked→met_at_show→followed_up→sample_sent→quoting→po_received | archived"</span>
-    interactions: <span class="st">list</span>[Interaction]         <span class="cm"># email_draft/email_sent/meeting_note/follow_up/other,全文入庫</span>
-    next_action_due: date | <span class="kw">None</span>            <span class="cm"># 逾期警示依據</span>
-    pending_draft: <span class="st">str</span> | <span class="kw">None</span>               <span class="cm"># 人工覆核佇列</span>
+  <div class="sec-label"><span class="no">09</span><h2>L6 送後引擎 — 完整規格(v3 新增;全層零 LLM)</h2></div>
+  <p class="lead">設計參考 exportlab-outreach 的防風控 failsafe,但以「物理上不可違反的程式碼 + 測試」實作,而非自然語言條款。模組:<code>sending/{schedule, footer, sequence, dispatcher, gmail}.py</code> + <code>webui/scheduler.py</code>。</p>
 
-<span class="cm"># 中間模型:RawLead(L1 統一輸出)、CardContact(OCR)、EnrichmentFacts(L2)、</span>
-<span class="cm">#           FitJudgment(L3)、CritiqueResult(L4)——均為 LLM 結構化輸出 schema</span></code></pre>
-  <p><strong>儲存:</strong>SQLite 單檔 <code>data/leads.db</code>;表 <code>leads(id, company, email, tier, region, grade, stage, data JSON)</code>,常用查詢欄位建索引,完整 Lead 以 JSON 存 <code>data</code> 欄。查詢介面:<code>save_lead / get_lead / list_leads(stage, grade) / find_by_company_or_email / overdue_leads</code>。</p>
+  <h3>9.1 入佇列(sequence.enqueue_for_lead)— 核准的那一下</h3>
+  <ul>
+    <li><strong>守門:</strong>缺 email / 已退訂 / 該 lead 已有 ready 佇列 → 拒絕(ValueError 帶人話)</li>
+    <li><strong>排程:</strong>seq1 = buyer 當地(州別→IANA 時區,查無用 <code>FALLBACK_TIMEZONE</code>=美東)最近的寄信時段起點(工作日 09:30–16:30,跳週末與美國聯邦假日 2026–27);<strong>同日已有排程 → 錯開 random(60–90) 分鐘</strong>,溢出時段順延次工作日;seq2/3 = seq1 日 +4/+6 工作日的時段起點</li>
+    <li><strong>展中特例:</strong>stage=met_at_show 只排一封、排「現在」(24 小時跟進 KPI 不等隔天時段)</li>
+    <li>每封 body 自動附 footer(9.4);寫入 <code>email_queue</code>(status=ready);清空 pending 草稿並記互動</li>
+  </ul>
+
+  <h3>9.2 佇列狀態機</h3>
+  <pre><code>ready ──派送成功(拿到 message_id)──▶ sent
+  │──回信/退訂/歸檔/超上限──▶ cancelled(永久;UI 亦可手動取消)
+  │──後端失敗──▶ failed(UI 可一鍵重排回 ready)
+  └──seq1 未寄出時 seq2/3 到期──▶ <strong>skip(暫緩,保留 ready)</strong>——不誤殺跟進</code></pre>
+
+  <h3>9.3 排程器(dispatcher.run_once)— 防風控節奏的心臟</h3>
+  <table>
+    <tr><th>規則</th><th>實作</th><th>防什麼</th></tr>
+    <tr><td><strong>一次只寄 1 封</strong></td><td>到期多封仍只取最早那筆,其餘留下一輪</td><td>批次爆寄=最典型的機器訊號</td></tr>
+    <tr><td><strong>暖機每日上限</strong></td><td>起算日=env 或第一封實際寄出日;前 2 週 2 封/天,之後 5 封/天(env 可調)</td><td>新帳號突然放量</td></tr>
+    <tr><td><strong>全域 interval 護欄</strong></td><td>距上一封寄出 &lt; INTERVAL_MIN(60 分)→ 本輪不寄</td><td>多 lead 的 seq2/3 撞在同一時刻(+4 工作日的 09:30)被 60 秒輪詢連發</td></tr>
+    <tr><td><strong>寄前重查</strong></td><td>寄出前一刻重查退訂名單與 lead 階段;該取消就取消、該暫緩就暫緩(9.2)</td><td>核准後狀態變化(對方回信/退訂)</td></tr>
+    <tr><td><strong>warm 通道</strong></td><td>測試信(test=True)與展中 follow-up(met_at_show)豁免每日上限與 interval,優先出門</td><td>回覆認識的人不是 cold outreach,不該被限流卡死</td></tr>
+    <tr><td><strong>不謊報</strong></td><td>拿到後端 message_id 才標 sent + 更新 lead(seq1→contacted、排 next_action_due);失敗標 failed 進日誌</td><td>「宣稱已寄出」與事實脫鉤</td></tr>
+    <tr><td><strong>bounce 防線</strong></td><td>同網域累積 3 次失敗 → 整網域自動加入退訂名單</td><td>高退信率毀寄件信譽</td></tr>
+    <tr><td><strong>thread 接續</strong></td><td>seq2/3 取 seq1 的 thread_ref 傳 threadId(gmail 模式)</td><td>對話串體驗,不是三封新信轟炸</td></tr>
+  </table>
+
+  <h3>9.4 合規 footer 與退訂機制(footer.py + List-Unsubscribe)</h3>
+  <p>CAN-SPAM 兩要件:寄件人<strong>實體地址</strong>(Profile sender.address)+ <strong>可運作的退出機制</strong>——本系統提供兩路:(1)footer 文字指示 reply UNSUBSCRIBE(10 個工作日內處理);(2)<strong>每封信帶 <code>List-Unsubscribe: &lt;mailto:寄件人?subject=UNSUBSCRIBE&gt;</code> 標頭</strong>——Gmail 等收件端據此在信件頂部顯示<strong>原生「取消訂閱」按鈕</strong>(mailto 變體免 web endpoint,對寄達率為正面訊號)。按鈕或回信觸發的退訂信由回覆偵測自動處理(9.5)。<code>ENABLE_COMPLIANCE_FOOTER=0</code> 時退為純簽名(標頭仍附)。<strong>address 為佔位字時:</strong>footer 印 ⚠ 提示、UI 紅色警告、gmail 自動寄送被硬性擋下。退訂名單(email 或整網域)寄前必查;「清空全部資料」保留退訂表。</p>
+
+  <h3>9.5 寄送後端(可插拔,SENDING_BACKEND)</h3>
+  <table>
+    <tr><th>後端</th><th>機制</th><th>用途</th></tr>
+    <tr><td><code>eml</code>(預設)</td><td>到期時輸出標準 .eml(To/Subject/X-Unsent)至 outbox/,message_id=檔名</td><td><strong>乾跑</strong>:排程/限流/狀態機全部真實運作,「送出」由人;網域暖機完成前的安全模式</td></tr>
+    <tr><td><code>gmail</code></td><td>REST + OAuth refresh token(httpx,零新依賴;scope 僅 gmail.send + gmail.readonly);access token 快取;送 <code>users/me/messages/send</code>(可帶 threadId)</td><td>全自動寄送;<strong>回覆偵測</strong>:每輪掃 sent thread,出現非我方訊息 → apply_track(replied) → 取消剩餘跟進;<strong>回信含 UNSUBSCRIBE/退訂關鍵字 → 自動加入退訂名單 + 歸檔</strong>(對應 List-Unsubscribe 按鈕與 footer 指示)</td></tr>
+  </table>
+
+  <h3>9.6 背景排程器(webui/scheduler.py)</h3>
+  <ul>
+    <li>serve 啟動時開 daemon thread,<strong>每 60 秒</strong> run_once(+ gmail 模式順帶 check_replies);寄送節奏由 scheduled_at 錯開與限流控制,輪詢頻率與寄量解耦</li>
+    <li>暫停/恢復:marker 檔(重啟記得);手動「立刻跑一輪」不受暫停影響</li>
+    <li>ring buffer 日誌(300 行)供 /outbox 即時顯示;連續空轉去重不洗版</li>
+    <li><span class="warn">已知單點:</span>排程器生命週期 = serve 行程(技術債 #1,見 17 章)</li>
+  </ul>
+
+  <h3>9.7 🧪 測試信(v3 新增)</h3>
+  <p>/outbox 一鍵寄測試信給指定信箱:走<strong>完整鏈路</strong>(佇列→排程器→後端→footer)但 <code>test=True</code> ——不佔暖機額度、不啟動暖機時鐘、豁免 interval、不動 lead 階段、pipeline 跳過測試 lead。2026-07-10 端對端實測:自動寄達(落點垃圾郵件——成因與對策見《上線作戰手冊》,屬帳號/網域信譽問題,非系統缺陷)。</p>
 </section>
 
 <!-- 10 -->
 <section id="s10">
-  <div class="sec-label"><span class="no">10</span><h2>LangGraph 編排</h2></div>
-<pre><code>graph = StateGraph(LeadState)      <span class="cm"># state 一律原生 dict(checkpoint 序列化不含自訂型別)</span>
-<span class="cm"># LeadState = {lead: dict, draft: str|None, critique: dict|None, revisions: int}</span>
-
-enrich → score ──(A|B)→ draft → critique ──(pass)→ review → END
-                └─(C / T3 / 未分級)→ END          └─(revise, revisions&lt;3)→ draft
-
-checkpointer = SqliteSaver(<span class="st">"data/checkpoints.db"</span>)
-thread_id = <span class="st">f"lead-{id}"</span>          <span class="cm"># 斷線後同 thread 續跑,不重花額度</span></code></pre>
+  <div class="sec-label"><span class="no">10</span><h2>L5 展中/展後作戰層</h2></div>
   <ul>
-    <li>L1 ingest 在 CLI/Web UI 批次執行,graph 為單筆 lead(fan-out 語意等價於 v1 設計)</li>
-    <li>每個節點結束同步寫回 leads.db——覆核佇列與看板隨時反映最新狀態</li>
-    <li><code>prepare_batch(limit, state, source)</code>(CLI 與 UI 共用):可依州與來源篩選本批;有 pending_draft 者跳過(不重跑不覆蓋);T3 直接歸檔不進圖</li>
-    <li><strong>SQLite 併發安全</strong>:build_graph 全程持鎖(checkpoint 建表/WAL 設定不可並行——曾致 database is locked);checkpoint 連線 timeout=30;leads.db 開 WAL 模式允許讀寫並行</li>
-    <li><code>run_pipeline(leads, workers=3, on_message)</code>:ThreadPoolExecutor 平行處理(每 worker 自建 graph 與 checkpoint 連線);單筆失敗記日誌不中斷整批;進度訊息經回呼導向 stdout(CLI)或任務日誌(UI)</li>
+    <li><strong>名片掃描(/card,手機):</strong>拍照 → Haiku OCR 結構化(CardContact)→ 庫內比對(預約客戶 vs 新接觸)→ 建檔 stage=met_at_show、排隔日跟進 → Sonnet 即時 company brief(這家是誰/怎麼談/FOB 或 DDP/英文開場白——公司視角由 Profile 提供)→ 會談紀錄入庫</li>
+    <li><strong>每晚批次(followup):</strong>met_at_show 全員依會談紀錄生成 same-day follow-up(&lt;120 字、必須引用會談具體內容)→ 覆核 → 核准後<strong>經 L6 立即排送(warm 通道)</strong>——24 小時跟進率 100%</li>
+    <li><strong>track 六事件:</strong>replied(+2 天)/ meeting(+7)/ sample(+7)/ quote(+5)/ po / dead;<strong>任何事件觸發都自動取消佇列中未寄出的跟進信</strong>(回覆煞車的 UI 路徑)</li>
+    <li><strong>看板:</strong>八階段漏斗 + 逾期紅色警示(Web UI 首頁為即時版;dashboard 指令產靜態 HTML,標題由 Profile 提供)</li>
   </ul>
 </section>
 
 <!-- 11 -->
 <section id="s11">
-  <div class="sec-label"><span class="no">11</span><h2>操作介面參考(Web UI 為主,CLI 供腳本化)</h2></div>
-  <p class="lead">日常唯一指令:<code>buyer-intel serve</code> → 瀏覽器 http://localhost:8000(頁面規格見 8.1)。以下 CLI 與 UI 功能一一對應,共用 actions.py:</p>
-  <table>
-    <thead><tr><th>指令</th><th>參數</th><th>作用</th></tr></thead>
-    <tbody>
-      <tr><td><code>serve</code></td><td><code>--port</code>(預設 8000)</td><td><strong>啟動 Web UI(建議的日常入口)</strong>;手機名片掃描:http://&lt;IP&gt;:8000/card</td></tr>
-      <tr><td><code>init</code></td><td>—</td><td>建立資料庫</td></tr>
-      <tr><td><code>ingest</code></td><td><code>--source apollo|places|iha|manual</code>、<code>--query</code>、<code>--file</code>、<code>--tier</code></td><td>L1 擷取 + L2 去重/驗證;逐筆印轉備援與略過原因</td></tr>
-      <tr><td><code>pipeline</code></td><td><code>--limit N</code>、<code>--workers N</code>(預設 3)、<code>--state IL</code>、<code>--source apollo</code></td><td>L2 豐富 → L3 評分 → L4 產信入佇列;可依州/來源篩選;自動跳過待覆核與 T3;單筆失敗不中斷</td></tr>
-      <tr><td><code>review</code></td><td>—(互動式)</td><td>逐封覆核:y 核准出 .eml / n 退回 / s 跳過</td></tr>
-      <tr><td><code>send</code></td><td><code>id</code></td><td>mailto 開啟郵件軟體,收件人/主旨/內文帶好</td></tr>
-      <tr><td><code>track</code></td><td><code>id</code>、<code>replied|meeting|sample|quote|po|dead</code>、<code>--note</code></td><td>推進階段 + 自動排下次行動日</td></tr>
-      <tr><td><code>followup</code></td><td>—</td><td>展中每晚批次:依會談紀錄產 same-day follow-up 草稿</td></tr>
-      <tr><td><code>dashboard</code></td><td>—</td><td>產出漏斗看板 dashboard.html</td></tr>
-    </tbody>
-  </table>
-  <p><strong>標準作戰序列:</strong><code>ingest → pipeline → review → send → track(循環)→ dashboard</code>;展中改為 <code>serve(白天)→ followup(每晚)→ review → send</code>。</p>
+  <div class="sec-label"><span class="no">11</span><h2>資料模型(Pydantic,完整欄位)</h2></div>
+  <pre><code><span class="kw">class</span> <span class="fn">Lead</span>(BaseModel):
+    id: int | None                      <span class="cm"># SQLite rowid</span>
+    <span class="cm"># 身分</span>
+    company: str; contact_name/title/email/website/city/state: str | None
+    email_verified: bool = False;  source: str   <span class="cm"># apollo/places/iha/manual/ocr/…</span>
+    alt_contacts: list[AltContact]      <span class="cm"># 同公司備選聯絡人,UI 一鍵切換</span>
+    <span class="cm"># 分類</span>
+    tier: <span class="st">"T0_rep|T1_coffee|T2_kitchen|T3_mass"</span>;  region: <span class="st">"PNW|TX|CA|NY|MIDWEST|OTHER"</span>
+    store_count: int | None;  sells_competitors: bool | None;  enrichment_notes: str | None
+    <span class="cm"># 評分</span>
+    score: float | None;  grade: <span class="st">"A|B|C"</span> | None;  score_rationale: str | None
+    <span class="cm"># Pipeline</span>
+    stage: <span class="st">"new→contacted→meeting_booked→met_at_show→followed_up→sample_sent→quoting→po_received | archived"</span>
+    interactions: list[Interaction];  next_action_due: date | None
+    pending_draft: str | None           <span class="cm"># seq1 待覆核</span>
+    <span class="kw">pending_followups: list[str]</span>        <span class="cm"># v3:seq2/3 草稿,與 seq1 一起覆核</span>
+
+<span class="kw">class</span> <span class="fn">QueuedEmail</span>(BaseModel):          <span class="cm"># v3:L6 寄送佇列(一封一列)</span>
+    id, lead_id, company, to_email, subject
+    body: str                           <span class="cm"># 完整內文(已含合規 footer)——寄送唯一資料源</span>
+    sequence_no: int                    <span class="cm"># 1/2/3</span>
+    scheduled_at: datetime              <span class="cm"># 帶 buyer 當地時區 offset(JSON 往返保留)</span>
+    status: <span class="st">"ready|sent|cancelled|failed"</span>
+    test: bool = False                  <span class="cm"># 測試信:走完整鏈但不佔額度/不限流</span>
+    thread_ref / message_id / error / created_at / sent_at
+<span class="cm"># 中間模型:RawLead、CardContact、EnrichmentFacts、FitJudgment、CritiqueResult、FollowUpDrafts</span></code></pre>
+  <p><strong>儲存(SQLite 單檔 data/leads.db):</strong>表 <code>leads</code>(索引欄+data JSON)、<code>email_queue</code>(lead_id/sequence_no/status/scheduled_at 索引 + data JSON)、<code>unsubscribed</code>(value 主鍵=email 或 domain 小寫;kind/source/note/created_at)。查詢層:<code>save_lead/get_lead/list_leads/find_by_company_or_email/overdue_leads</code> + v3 新增 <code>save_queued/get_queued/list_queue/due_ready_emails/earliest_future_ready/cancel_sequence/add_unsubscribe/is_unsubscribed</code>。<code>wipe_leads</code> 清 leads+email_queue,<strong>保留 unsubscribed</strong>。WAL 模式 + timeout=30 供平行 pipeline。</p>
 </section>
 
 <!-- 12 -->
 <section id="s12">
-  <div class="sec-label"><span class="no">12</span><h2>檔案結構與環境設定</h2></div>
-<pre><code>buyer-intelligence/
-├── src/buyer_intel/
-│   ├── config.py        <span class="cm"># 全部常數單一來源:模型/權重/門檻/路徑/金鑰</span>
-│   ├── models.py  db.py  llm.py  actions.py   <span class="cm"># actions = CLI/UI 共用業務層</span>
-│   ├── adapters/{base,apollo,places,iha,manual}.py
-│   ├── enrich.py  scoring.py  outreach.py  graph.py  cli.py
-│   ├── webui/{app,jobs}.py   <span class="cm"># Web UI 全頁面 + 背景任務管理</span>
-│   ├── field_ops/{ocr,brief}.py   dashboard.py
-├── tests/(17 項,離線可跑)   docs/(Apollo/Hunter/Maps 指南)
-├── imports/(名單 CSV,git 排除)  outbox/(核准 .eml,git 排除)
-├── data/(leads.db + checkpoints.db,git 排除)  PROGRESS.md(日誌)</span></code></pre>
-  <table>
-    <thead><tr><th>環境變數(.env)</th><th>預設</th><th>說明</th></tr></thead>
-    <tbody>
-      <tr><td><code>LLM_BACKEND</code></td><td><code>claude_code</code></td><td>或 <code>api</code></td></tr>
-      <tr><td><code>CLAUDE_CLI</code> / <code>CLI_MODEL_FAST|MID|TOP</code></td><td>自動解析 / haiku/sonnet/opus</td><td>CLI 路徑與模型別名覆寫</td></tr>
-      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>—</td><td>僅 api 後端;或 ant auth login</td></tr>
-      <tr><td><code>APOLLO_API_KEY / HUNTER_API_KEY / GOOGLE_MAPS_API_KEY</code></td><td>—</td><td>缺者對應功能明確報錯,其餘照常</td></tr>
-      <tr><td><code>TIHS_BOOTH / CALENDLY_URL</code></td><td>—</td><td>寫入 outreach 信件</td></tr>
-    </tbody>
-  </table>
+  <div class="sec-label"><span class="no">12</span><h2>LangGraph 編排</h2></div>
+  <pre><code>enrich → score ──(A|B)→ draft → critique ──(pass)→ review(+ <span class="kw">draft_followups</span>)→ END
+   └─(C / T3 / 未分級)→ END         └─(revise, revisions&lt;3)→ draft
+checkpointer = SqliteSaver(<span class="st">"data/checkpoints.db"</span>);  thread_id = <span class="st">f"lead-{id}"</span>  <span class="cm"># 斷線續跑不重花額度</span></code></pre>
+  <ul>
+    <li>state 一律原生 dict(節點內重建 Pydantic;checkpoint 序列化相容)</li>
+    <li><code>prepare_batch(limit, state, source)</code>(CLI/UI 共用):州×來源篩選;跳過待覆核者;T3 直接歸檔;<strong>v3:跳過 🧪 測試 lead</strong></li>
+    <li><code>run_pipeline(workers=3)</code>:ThreadPoolExecutor 平行(~3 倍),單筆失敗不拖垮整批;build_graph 全程持鎖防 SQLite 建表競爭</li>
+    <li>續跑省錢:已 enriched / 已評分者節點內直接跳過</li>
+  </ul>
 </section>
 
 <!-- 13 -->
 <section id="s13">
-  <div class="sec-label"><span class="no">13</span><h2>測試與端對端驗證紀錄</h2></div>
-  <p><strong>自動化測試 17 項(離線,不需金鑰):</strong>規模/地區/職稱規則分數、分級門檻、<strong>T3 防線(防線失效會觸發 LLM 呼叫而報錯)</strong>、T0 獨立通道、地區映射、模糊去重、email 網域合併、<strong>免費信箱不合併</strong>、公司網域仍合併、保留較完整紀錄、<strong>Owner 勝過無職稱(真實案例)</strong>、<strong>品類買手勝過泛職稱(真實案例)</strong>、Apollo 匯出格式、簡易格式、tier 參數預設。</p>
+  <div class="sec-label"><span class="no">13</span><h2>操作介面(Web UI 為主,CLI 供腳本化)</h2></div>
+  <h3>13.1 Web UI 頁面(buyer-intel serve → :8000)</h3>
   <table>
-    <thead><tr><th>端對端驗證(訂閱額度實跑)</th><th>結果</th></tr></thead>
-    <tbody>
-      <tr><td>單筆全流程(咖啡器材電商)</td><td class="ok">背景查到真實資料(營收、已賣競品)→ 60.3/B → 信過 Opus 審稿 → 入佇列</td></tr>
-      <tr><td>評分 vs 戰略</td><td class="ok">P1 全 A(73–78)、NY 71/A、OTHER 62.7/B——與地區權重設計一致</td></tr>
-      <tr><td>T3 防線</td><td class="ok">Costco 於 CLI 入口被攔,零額度</td></tr>
-      <tr><td>真實 Apollo 匯出(25 人)</td><td class="ok">自動識別格式、7 筆同公司聯絡人轉備援、品類買手正確勝出</td></tr>
-      <tr><td>checkpoint 相容性</td><td class="ok">state 改原生 dict 後警告消失</td></tr>
-    </tbody>
+    <tr><th>頁面/端點</th><th>功能</th></tr>
+    <tr><td><code>GET /</code> 儀表板</td><td>八階段漏斗、逾期警示、<strong>寄送佇列卡(排程中計數)</strong>、背景任務狀態、危險區(清空需輸入 DELETE;保留退訂表與 imports/)</td></tr>
+    <tr><td><code>GET /leads</code>、<code>/leads/{id}</code></td><td>列表(階段/分級篩選、搜尋、州+來源欄)與詳情:評分依據、背景情報、全部聯絡人表(一鍵換主收件人+即時重驗)、LinkedIn 在職查核連結、<strong>排程狀態區塊(已排幾封/時間)</strong>、track 六事件、單筆刪除</td></tr>
+    <tr><td><code>GET /review</code> + approve/reject</td><td><strong>三輪同屏覆核</strong>:seq1/2/3 三個編輯框(標注 +4/+6 工作日與自動煞車說明)皆可改稿;「核准整串」→ 入佇列並顯示排程時間;守門失敗(退訂/重複)顯示人話錯誤</td></tr>
+    <tr><td><code>GET /outbox</code>(v3 新增)</td><td><strong>L6 監控中心</strong>:今日用量/暖機階段、排程中/到期/累計統計、後端徽章(eml/gmail)、佇列明細(buyer 當地時間、🧪 標記、單封取消、失敗重排)、排程器即時日誌(3 秒輪詢)、暫停/恢復、立刻跑一輪、<strong>🧪 寄測試信</strong>、退訂名單管理(加入即取消命中的排程信)、地址未填/假日表過期警告</td></tr>
+    <tr><td><code>GET|POST /import</code>、<code>/scan</code></td><td>CSV 上傳(格式自動識別、來源標籤自選)、Google 地圖掃描;<strong>預覽勾選確認</strong>後才入庫</td></tr>
+    <tr><td><code>GET /pipeline</code> + start</td><td>州×來源×筆數×平行數;背景執行 + 即時日誌(2 秒輪詢)</td></tr>
+    <tr><td><code>GET|POST /card</code></td><td>展中名片掃描(手機),OCR → 比對 → brief → 會談紀錄</td></tr>
   </table>
+  <h3>13.2 CLI(共用 actions.py 業務層)</h3>
+  <p><code>serve</code>(日常唯一指令)/ <code>init</code> / <code>ingest --source … --query/--file --tier</code> / <code>pipeline --limit --workers --state --source</code> / <code>review</code>(互動式,三輪顯示、核准入佇列)/ <strong><code>dispatch</code>(v3 新增:手動跑一輪排程器)</strong> / <code>send</code>(mailto 備援)/ <code>track</code> / <code>followup</code> / <code>dashboard</code>。</p>
 </section>
 
 <!-- 14 -->
 <section id="s14">
-  <div class="sec-label"><span class="no">14</span><h2>營運成本(實測後修正)</h2></div>
+  <div class="sec-label"><span class="no">14</span><h2>檔案結構與環境設定</h2></div>
+  <pre><code>buyer-intelligence/
+├── company/ankomn.toml            <span class="cm"># ★ 公司 Profile(通用化單一事實來源)</span>
+├── src/buyer_intel/
+│   ├── config.py                  <span class="cm"># 模型/權重/門檻/L6 寄送節奏/路徑</span>
+│   ├── company.py                 <span class="cm"># ★ Profile 載入層(COMPANY_PROFILE 切換)</span>
+│   ├── models.py  db.py  llm.py  actions.py
+│   ├── adapters/{base,apollo,places,iha,manual}.py
+│   ├── enrich.py  scoring.py  outreach.py  graph.py  cli.py
+│   ├── sending/                   <span class="cm"># ★ L6 送後引擎(全層零 LLM)</span>
+│   │   ├── schedule.py            <span class="cm">#   工作日/假日/時區/時段(純函式)</span>
+│   │   ├── footer.py              <span class="cm">#   CAN-SPAM footer(純函式)</span>
+│   │   ├── sequence.py            <span class="cm">#   核准 → 三輪入佇列(錯開/守門)</span>
+│   │   ├── dispatcher.py          <span class="cm">#   限流/護欄/守門/後端派送</span>
+│   │   └── gmail.py               <span class="cm">#   Gmail REST 後端 + thread 回覆偵測</span>
+│   ├── webui/{app,jobs,scheduler}.py  <span class="cm"># scheduler = 背景寄送輪詢</span>
+│   ├── field_ops/{ocr,brief}.py  dashboard.py
+├── docs/                          <span class="cm"># 上線作戰手冊(README)+ 工具指南(含 gmail.md OAuth)</span>
+├── tests/(38 項,離線可跑)  plan/(本文件+計劃書)
+├── imports/  outbox/  data/(git 排除)  PROGRESS.md</code></pre>
   <table>
-    <thead><tr><th>項目</th><th>月費</th><th>備註</th></tr></thead>
-    <tbody>
-      <tr><td>LLM(全部呼叫)</td><td><strong>$0</strong></td><td class="ok">claude_code 後端走既有訂閱;受訂閱用量上限。api 後端備援:$30–80/月</td></tr>
-      <tr><td>Apollo</td><td>$0 或 $49–59</td><td class="warn">v1「免費 tier 走 API」不成立:People Search API 需付費;免費 = 網頁匯出 CSV(目前採用)</td></tr>
-      <tr><td>Hunter</td><td>$0–49</td><td>免費額度覆蓋初期;量產期付費</td></tr>
-      <tr><td>Google Maps Places</td><td>≈$0</td><td>免費額度遠大於用量</td></tr>
-      <tr><td>Calendly</td><td>$0–12</td><td>免費版單一活動類型可用</td></tr>
-      <tr><td><strong>合計</strong></td><td><strong>$0–170</strong></td><td>驗證期 $0;名單量產期上緣</td></tr>
-    </tbody>
+    <tr><th>環境變數(.env)</th><th>預設</th><th>說明</th></tr>
+    <tr><td><code>LLM_BACKEND</code> / <code>CLAUDE_CLI</code> / <code>CLI_MODEL_*</code> / <code>ANTHROPIC_API_KEY</code></td><td>claude_code / 自動解析</td><td>LLM 雙後端(02 章)</td></tr>
+    <tr><td><code>COMPANY_PROFILE</code></td><td>company/ankomn.toml</td><td>換公司指向其他 toml</td></tr>
+    <tr><td><code>SENDING_BACKEND</code></td><td><code>eml</code></td><td><code>gmail</code> 需下列三鍵</td></tr>
+    <tr><td><code>GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN</code></td><td>—</td><td>OAuth(申請見 docs/gmail.md;app 須「發布」否則 token 7 天過期)</td></tr>
+    <tr><td><code>ENABLE_COMPLIANCE_FOOTER</code></td><td>1</td><td>0=僅簽名</td></tr>
+    <tr><td><code>WARMUP_START_DATE / WARMUP_WEEKS / DAILY_LIMIT_WARMUP / DAILY_LIMIT_NORMAL</code></td><td>自動 / 2 / 2 / 5</td><td>暖機節奏</td></tr>
+    <tr><td><code>SEND_WINDOW_START/END / INTERVAL_MIN/MAX_MINUTES / FALLBACK_TIMEZONE</code></td><td>09:30 / 16:30 / 60 / 90 / America/New_York</td><td>寄信時段與錯開</td></tr>
+    <tr><td><code>APOLLO_API_KEY / HUNTER_API_KEY / GOOGLE_MAPS_API_KEY</code></td><td>—</td><td>缺者對應功能明確報錯,其餘照常</td></tr>
   </table>
 </section>
 
 <!-- 15 -->
 <section id="s15">
-  <div class="sec-label"><span class="no">15</span><h2>已知限制與後續路線</h2></div>
+  <div class="sec-label"><span class="no">15</span><h2>測試與端對端驗證紀錄</h2></div>
+  <p><strong>自動化測試 38 項(離線,不需金鑰、不呼叫 LLM):</strong></p>
   <ul>
-    <li><strong>寄信基礎設施(系統範圍外,成敗前提):</strong>專用網域 + SPF/DKIM/DMARC + 4–6 週暖機 + CAN-SPAM(實體地址/退訂)須於 outreach 前完成——已排入戰略時間軸 2026-08。</li>
-    <li><strong>回覆偵測是手動的:</strong>誰回信靠人發現後 <code>track replied</code>;放量後接 Gmail API 自動偵測(規劃中,非必要)。</li>
-    <li><strong>B 級批次覆核未實作:</strong>review 逐封;量產期若成瓶頸再加批次模式。</li>
-    <li><strong>評分權重為先驗設定:</strong>展後以實際回覆率/會議轉化率校準 <code>config.SCORE_WEIGHTS</code>。</li>
-    <li><strong>會談紀錄僅文字:</strong>v1 規劃的語音輸入未做(手機鍵盤語音輸入可替代)。</li>
-    <li><strong>Web UI 無登入機制:</strong>設計為本機/內網單人使用;若需對外開放須加認證層。</li>
-    <li><strong>Web UI 匯入僅支援 CSV:</strong>Apollo API(付費後)與 Places 掃描目前走 CLI <code>ingest</code>;需要時再加進 UI。</li>
+    <li><strong>評分/去重(v2 既有 20 項):</strong>規則分數、分級門檻、T3 防線、T0 通道、地區映射、模糊去重、免費信箱不合併、聯絡人優先序(Owner 勝無職稱、品類買手勝泛職稱)、Apollo/簡易格式識別等</li>
+    <li><strong>L6(v3 新增 18 項):</strong>工作日跨週末+假日演算、時段順延(過時段/週末)、三輪 offset 落點、州→時區映射、footer 合規要件(地址/UNSUBSCRIBE/時限)、佔位地址不外流、簽名模式、三輪入佇列與 footer 附加、同日錯開 60 分、退訂/重複入佇列拒絕、展中單封立即、一次一封+interval 護欄、warmup 每日上限、eml 落檔+lead 推進、回覆煞車取消 seq2/3、寄前守門(排程後退訂→取消)、<strong>seq1 失敗時 seq2/3 暫緩不誤殺</strong>、暖機週期切換</li>
   </ul>
+  <table>
+    <tr><th>端對端驗證(實跑)</th><th>結果</th></tr>
+    <tr><td>單筆 pipeline 全流程</td><td>背景查到真實資料 → 評分合理 → 信過 Opus 審稿 → 入佇列</td></tr>
+    <tr><td>評分 vs 戰略</td><td>P1 全 A(73–78)、NY 71/A、OTHER 62.7/B、Costco 被 T3 攔(零額度)</td></tr>
+    <tr><td>通用化切換</td><td>虛構塑膠代工 Profile:信件/footer/主旨/研究 prompt 全跟隨,零 Ankomn 殘留</td></tr>
+    <tr><td><strong>寄信端對端(2026-07-10)</strong></td><td>OAuth 授權 → API 驗證寄件身分 → 測試信入佇列 → 排程器自動派送 → Gmail message id 回寫 → 收件信箱收到(落點垃圾郵件——帳號信譽問題,對策入《上線作戰手冊》)</td></tr>
+    <tr><td>Web UI 冒煙</td><td>14 條路由 200/303 全過(含 /outbox 控制端點)</td></tr>
+  </table>
 </section>
 
-<footer>
-  <div>Buyer Intelligence System 完整系統規格書 v2.0(as-built)· 內部技術文件 · 2026-07</div>
-  <div>配套商業文件:《Ankomn 北美市場拓展最終計劃書 Final v2》· 原始碼與測試:內部 repo(buyer-intelligence)</div>
-</footer>
+<!-- 16 -->
+<section id="s16">
+  <div class="sec-label"><span class="no">16</span><h2>營運成本</h2></div>
+  <table>
+    <tr><th>項目</th><th>月費</th><th>備註</th></tr>
+    <tr><td>LLM(全部呼叫)</td><td><strong>$0</strong></td><td>claude_code 走訂閱;api 後端備援 $30–80/月(量產期)</td></tr>
+    <tr><td>Gmail API 寄送</td><td><strong>$0</strong></td><td>免費額度遠超用量;正式帳號建議 Google Workspace ~$7/月</td></tr>
+    <tr><td>寄信網域</td><td>~$1(年繳 $12)</td><td>正式 outreach 必備(見上線作戰手冊)</td></tr>
+    <tr><td>Apollo</td><td>$0 或 $49–59</td><td>免費=網頁匯出 CSV(現行);量產期升 Basic</td></tr>
+    <tr><td>Hunter</td><td>$0–49</td><td>免費 100 驗證/月覆蓋初期</td></tr>
+    <tr><td>Google Maps Places</td><td>≈$0</td><td>免費額度內</td></tr>
+    <tr><td><strong>合計</strong></td><td><strong>$0–200</strong></td><td>驗證期 ≈ $0;量產期上緣</td></tr>
+  </table>
+</section>
 
-</main>
+<!-- 17 -->
+<section id="s17">
+  <div class="sec-label"><span class="no">17</span><h2>已知限制與後續路線(技術債,依還債順序)</h2></div>
+  <table>
+    <tr><th>#</th><th>限制</th><th>影響</th><th>修法與觸發時機</th></tr>
+    <tr><td>0</td><td><span class="warn">寄達率基建(系統外,成敗前提)</span></td><td>免費 Gmail + 零信譽帳號 → 測試信已實測進垃圾桶</td><td>專用網域 + Workspace + SPF/DKIM/DMARC + 暖機 4–6 週;OAuth app 發布(token 7 天限);完整 playbook 見《上線作戰手冊》——8 月關鍵路徑</td></tr>
+    <tr><td>1</td><td>排程器依附 serve 行程</td><td>闔筆電/行程掛=寄送靜默停擺</td><td>1a 心跳警示(30 分,立即)→ 1b launchd 獨立 dispatcher(半天,正式前)</td></tr>
+    <tr><td>2</td><td>寄送無重試</td><td>Gmail 暫時性 429/5xx 直接 failed,斷三輪節奏、可能誤觸 bounce 退訂</td><td>暫時/永久錯誤二分 + 指數退避重排 ≤3 次(2–3 小時,正式前)</td></tr>
+    <tr><td>3</td><td>LLM 走 CLI subprocess</td><td>冷啟動慢、錯誤靠 stdout、曾兩次斷鏈</td><td><code>LLM_BACKEND=api</code> 一行切換(量產期或再斷鏈時)</td></tr>
+    <tr><td>4</td><td>LLM 層無迴歸測試</td><td>prompt 改壞靠人工發現</td><td>錄放式 fixture(頻繁調 prompt 時)</td></tr>
+    <tr><td>5</td><td>SQLite 併發上限</td><td>workers&gt;5 可能撞鎖(已有 WAL+timeout)</td><td>撞到再處理</td></tr>
+    <tr><td>6</td><td>Profile lru_cache</td><td>改 toml 需重啟</td><td>UI 重載按鈕(15 分,順手時)</td></tr>
+    <tr><td>7</td><td>無 schema migration</td><td>破壞性改欄位會痛(現靠 Pydantic default 前向相容)</td><td>改 schema 前先寫遷移腳本</td></tr>
+    <tr><td>8</td><td>評分權重/Tier 屬戰略層未 profile 化</td><td>換公司需改 config.py/models.py</td><td>第二家公司真的接入時再抽象(YAGNI)</td></tr>
+    <tr><td>9</td><td>Web UI 無登入</td><td>設計為本機單人;對外開放需認證層</td><td>不對外則不做</td></tr>
+    <tr><td>10</td><td>回覆偵測限 gmail 後端與我方 thread</td><td>對方換信箱回信偵測不到</td><td>UI「對方回信」按鈕為人工補位(現行設計)</td></tr>
+  </table>
+</section>
+
+</div>
+
+<footer><div class="wrap">
+  Buyer Intelligence System 完整系統規格書 v3.0(as-built)· 內部技術文件 · 2026-07-10<br>
+  配套文件:《Ankomn 北美市場拓展最終計劃書 Final v3》(plan/)·《上線作戰手冊》(docs/README.md)· 原始碼與 38 項測試:內部 repo(buyer-intelligence)
+</div></footer>
+
 </body>
 </html>
