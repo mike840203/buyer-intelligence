@@ -1,13 +1,16 @@
 """L4 觸達引擎:生成 → 自我批判 → 重寫 的迴圈。
 
-- Sonnet 依 buyer 公司背景寫個人化邀約信
+- Sonnet 依 buyer 公司背景寫個人化開發信
 - Opus 扮演「收信的美國 buyer」批判這封信(太長?太罐頭?價值主張不清?)
 - 不及格退回重寫,最多三輪;出迴圈後進人工覆核佇列(pending_draft)
 
 Human-in-the-loop(架構報告設計原則 2):
 發信永遠由人最終覆核 —— 本模組只產草稿,絕不直接寄送。
-信中固定包含:一句話價值主張、為何找上「這一家」的具體理由、
-TIHS 攤位資訊 + Calendly 預約連結。
+
+信件定位:**通用 B2B 開發信**。行動呼籲永遠是低摩擦的一般做生意流程
+(寄樣品 / 短通話),不預設對方會參展。若 company profile 設了展會 campaign,
+只在信末以一句「附帶提及」帶過(對方若也去展會可順道碰面),絕不當主 CTA
+—— 多數獨立小店根本不會飛去參展,對他們喊「展會見」等於自曝罐頭信。
 """
 
 from __future__ import annotations
@@ -36,43 +39,42 @@ def _force_english(prompt: str, first_draft: str) -> str:
     return retry
 
 
-def _campaign_block() -> str:
-    """依 company profile 的 campaign 型態組寫信用的場景說明。"""
+def _event_mention() -> str:
+    """展會只當「可選的附帶提及」——有設 trade_show campaign 時,給 AI 一句軟性素材。
+
+    回傳給 prompt 用的指示;沒設展會就回空字串(信件純一般開發流程)。
+    """
     c = get_company().campaign
     if not c.is_trade_show:
         return ""
-    parts = [f"Trade show: {c.name}"]
-    if c.detail:
-        parts.append(c.detail)
-    if c.booth:
-        parts.append(c.booth)
-    block = ", ".join(parts) + ".\n"
-    block += f"Booking link: {c.booking_url or '(booking link TBD)'}\n"
-    return block
+    when = f" ({c.detail})" if c.detail else ""
+    return (
+        f"\nOptional in-person note: we will also be at {c.name}{when}. "
+        "You MAY add ONE short closing line offering to meet in person there IF "
+        "they happen to attend — but this is strictly optional and must NOT be the "
+        "main ask, must not assume they attend, and must not include a booth number "
+        "or booking link. The primary call-to-action is always the sample/call below.\n"
+    )
 
 
 def draft_email(lead: Lead, hints: str | None = None) -> str:
-    """Sonnet 生成個人化邀約信(英文,寄給美國 buyer)。內容全部由 company profile 驅動。"""
+    """Sonnet 生成個人化開發信(英文,寄給美國 buyer)。內容全部由 company profile 驅動。
+
+    定位:通用 B2B 開發信。主 CTA 永遠是寄樣品或短通話;展會(若有設定)只當
+    信末一句可選的附帶提及,不預設對方會參展。
+    """
     company = get_company()
     rep_angle = lead.tier == "T0_rep"
-    campaign = _campaign_block()
-    is_show = get_company().campaign.is_trade_show
-
-    ask_line = (
-        "- Mention the event and offer the booking link\n" if is_show
-        else "- Propose a low-friction next step (a short reply or a quick call)\n"
-    )
-    intent = ("for a trade-show meeting request" if is_show
-              else "to open a wholesale conversation")
+    event_mention = _event_mention()
 
     prompt = (
-        f"Write a cold outreach email in English {intent}.\n\n"
+        "Write a cold outreach email in English to open a wholesale conversation.\n\n"
         f"Sender: {company.name}, {company.description or company.industry}.\n"
         f"Value proposition: {company.value_proposition}\n"
-        f"{campaign}\n"
         f"Recipient company: {lead.company}\n"
         f"Recipient: {lead.contact_name or 'the buyer'} ({lead.title or 'title unknown'})\n"
-        f"What we know about them: {lead.enrichment_notes or 'nothing specific - keep it honest, do not fabricate'}\n\n"
+        f"What we know about them: {lead.enrichment_notes or 'nothing specific - keep it honest, do not fabricate'}\n"
+        f"{event_mention}\n"
         + (
             "This recipient is an independent SALES REP GROUP, not a retailer: pitch a "
             "line-representation opportunity (commission-based, US retail relationships) "
@@ -87,8 +89,10 @@ def draft_email(lead: Lead, hints: str | None = None) -> str:
         "- One-sentence value proposition\n"
         "- A SPECIFIC reason why we reached out to THIS company (use what we know; "
         "never invent facts)\n"
-        + ask_line
-        + "- No hype words, no emoji, no generic flattery\n"
+        "- The main call-to-action is a normal, low-friction B2B next step: offer to "
+        "send a free sample, or ask for a short call / a quick reply. Do NOT assume "
+        "the recipient attends any trade show.\n"
+        "- No hype words, no emoji, no generic flattery\n"
         f"- End with a simple sign-off from '{company.sender.name}'\n"
         + (f"\nReviewer feedback to address in this revision:\n{hints}\n" if hints else "")
         + "\nReturn ONLY the email body (with a subject line on the first line as "
@@ -104,15 +108,19 @@ def critique_email(draft: str, lead: Lead) -> CritiqueResult:
         (
             f"You are a busy US retail buyer at {lead.company} "
             f"({lead.title or 'buyer'}). You get dozens of cold vendor emails a day "
-            "and delete anything generic. Critique this trade-show outreach email "
+            "and delete anything generic. Critique this B2B wholesale outreach email "
             "ruthlessly:\n\n"
             f"---\n{draft}\n---\n\n"
             "Fail it (verdict='revise') if ANY of these are true: contains ANY "
             "non-English text (Chinese/Japanese characters — instant fail); over "
             "150 words; reads like a template; the 'why you specifically' reason "
             "is vague or fabricated; value proposition unclear; pushy or hype-y "
-            "tone; missing booth info or booking link. Otherwise verdict='pass'. "
-            "List concrete issues and give rewrite_hints if revising."
+            "tone; the call-to-action is high-friction or presumptuous (e.g. assumes "
+            "the recipient attends a trade show, or demands a meeting). A good CTA is "
+            "low-friction: offering a sample, a short call, or a quick reply. "
+            "Otherwise verdict='pass'. Do NOT require any trade-show or booth "
+            "reference — a normal wholesale ask with no event mention is perfectly "
+            "fine. List concrete issues and give rewrite_hints if revising."
         ),
         CritiqueResult,
     )

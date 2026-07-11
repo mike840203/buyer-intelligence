@@ -46,13 +46,27 @@ def _dump(lead: Lead) -> dict:
     return lead.model_dump(mode="json")
 
 
+# ── 進度回報:每個 worker 執行緒各存自己的回呼與公司名,節點逐步回報 ──
+# (解決 pipeline 中間 2–4 分鐘靜默、看不出在跑什麼還是卡住的問題)
+_progress = threading.local()
+
+
+def _step(msg: str) -> None:
+    emit = getattr(_progress, "emit", None)
+    company = getattr(_progress, "company", "")
+    if emit:
+        emit(f"  ↳ {company}:{msg}")
+
+
 # ── 節點 ──
 
 def node_enrich(state: LeadState) -> dict:
     lead = _lead(state)
     # 續跑省錢:上次跑到一半失敗的 lead,背景調查(最貴的一步)已存庫就不重查
     if lead.enrichment_notes and lead.store_count is not None:
+        _step("背景已有(續跑略過),評分中")
         return {"lead": _dump(lead)}
+    _step("🔍 上網查公司背景中…(這是最慢的一步,約 1–3 分鐘)")
     lead = enrich_lead(lead)
     db.save_lead(lead)
     return {"lead": _dump(lead)}
@@ -63,24 +77,31 @@ def node_score(state: LeadState) -> dict:
     # 續跑省錢:已有分數與分級者不重評
     if lead.score is not None and lead.grade:
         return {"lead": _dump(lead)}
+    _step("✓ 背景完成,評分中")
     lead = score_lead(lead)
     # 補聯絡人:僅對「過關(A/B)+ 缺 email + 有網站」者用 Hunter 反查——
     # 省額度(C 級/T3 已歸檔不碰),放評分後才知道值不值得花這次查詢
     if lead.grade in ("A", "B") and not lead.email and lead.website:
+        _step(f"分級 {lead.grade},缺 email → Hunter 網域反查決策人中")
         from .enrich import backfill_contacts
         lead = backfill_contacts(lead)
+    elif lead.grade == "C":
+        _step("分級 C → 歸檔,不寫信")
     db.save_lead(lead)
     return {"lead": _dump(lead)}
 
 
 def node_draft(state: LeadState) -> dict:
+    rnd = state["revisions"] + 1
+    _step("✍️ 寫信中" if rnd == 1 else f"✏️ 審稿未過,重寫(第 {rnd} 輪)")
     hints = (state["critique"] or {}).get("rewrite_hints")
     draft = draft_email(_lead(state), hints=hints)
-    return {"draft": draft, "revisions": state["revisions"] + 1}
+    return {"draft": draft, "revisions": rnd}
 
 
 def node_critique(state: LeadState) -> dict:
     assert state["draft"] is not None
+    _step("🔎 Opus 扮演美國買家審稿中")
     result = critique_email(state["draft"], _lead(state))
     return {"critique": result.model_dump()}
 
@@ -192,18 +213,26 @@ def prepare_batch(
     return leads, messages
 
 
-def _process_one(lead: Lead) -> Lead:
-    """單筆 lead 跑完整圖。每個呼叫自建 graph(獨立 checkpoint 連線,執行緒安全)。"""
-    app = build_graph()
-    if lead.id is None:
-        lead = db.save_lead(lead)
-    state: LeadState = {
-        "lead": lead.model_dump(mode="json"),
-        "draft": None, "critique": None, "revisions": 0,
-    }
-    config = {"configurable": {"thread_id": f"lead-{lead.id}"}}
-    final = app.invoke(state, config=config)
-    return Lead.model_validate(final["lead"])
+def _process_one(lead: Lead, on_message=None) -> Lead:
+    """單筆 lead 跑完整圖。每個呼叫自建 graph(獨立 checkpoint 連線,執行緒安全)。
+
+    on_message:節點級進度回呼,存入 thread-local 供各節點 _step 呼叫。
+    """
+    _progress.emit = on_message
+    _progress.company = lead.company
+    try:
+        app = build_graph()
+        if lead.id is None:
+            lead = db.save_lead(lead)
+        state: LeadState = {
+            "lead": lead.model_dump(mode="json"),
+            "draft": None, "critique": None, "revisions": 0,
+        }
+        config = {"configurable": {"thread_id": f"lead-{lead.id}"}}
+        final = app.invoke(state, config=config)
+        return Lead.model_validate(final["lead"])
+    finally:
+        _progress.emit = None
 
 
 def run_pipeline(
@@ -227,13 +256,13 @@ def run_pipeline(
     if workers <= 1:
         for lead in leads:
             try:
-                report(_process_one(lead))
+                report(_process_one(lead, on_message))
             except Exception as exc:  # noqa: BLE001 — 單筆失敗不拖垮整批
                 on_message(f"✘ {lead.company} 處理失敗:{exc}")
         return results
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_process_one, lead): lead for lead in leads}
+        futures = {pool.submit(_process_one, lead, on_message): lead for lead in leads}
         for future in as_completed(futures):
             lead = futures[future]
             try:

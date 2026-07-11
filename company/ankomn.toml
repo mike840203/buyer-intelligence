@@ -23,12 +23,14 @@ phone = "+886-2-2609-8699"
 address = "No. 2-2, Dingfu, Linkou Dist., New Taipei City 244, Taiwan"
 
 [campaign]
-# 觸發場景。type=trade_show 時信中帶攤位 + 預約連結;type=general 則純開發信、不帶展會資訊。
-type = "trade_show"                    # trade_show | general
+# 展會只當「附帶提及」——信件主 CTA 永遠是一般 B2B 做生意流程(寄樣品/短通話),
+# 不預設對方會參展。type=trade_show 時信末會多一句軟性提及(對方若也去展會可順道碰面);
+# type=general 則完全不提展會。多數獨立小店不會參展,故展會絕不當主號召。
+type = "trade_show"                    # trade_show(附帶提及)| general(完全不提)
 name = "The Inspired Home Show 2027"
 detail = "Chicago, March 9-11"
-booth = "Clean + Contain zone, booth TBD"
-booking_url = ""                       # Calendly 連結(選填)
+booth = "Clean + Contain zone, booth TBD"  # 已不寫入信件(展會降級為備注,不放攤位號)
+booking_url = ""                       # 已不寫入信件
 
 [targeting]
 # 目標買家輪廓——enrich 背景研究與 scoring 通路契合判斷會引用。換產業就改這幾行。

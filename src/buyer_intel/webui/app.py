@@ -421,39 +421,26 @@ def lead_contact(lead_id: int, contact_name: str = Form(""),
 
 # ─────────────────────────── 覆核佇列 ───────────────────────────
 
-@app.get("/review", response_class=HTMLResponse)
-def review(approved: int = 0, err: str = "", msg: str = ""):
-    pending = [l for l in db.all_leads() if l.pending_draft]
-    flash = msg or ""
-    if approved:
-        lead = db.get_lead(approved)
-        if lead:
-            queued = db.list_queue(lead_id=approved)
-            plan = "、".join(f"seq{q.sequence_no} {q.scheduled_at:%m/%d %H:%M}"
-                             for q in queued if q.status == "ready")
-            flash = (f"✅ 已核准「{e(lead.company)}」整串,排入寄送佇列:{plan} "
-                     f'<a class="btn sec" href="/outbox">查看寄送佇列 →</a>')
-
-    cards = ""
-    for lead in pending:
-        is_test = lead.company.startswith("🧪")
-        followup_boxes = ""
-        if lead.pending_followups:
-            for i, fu in enumerate(lead.pending_followups):
-                seq = i + 2
-                if is_test:
-                    off = f"+{2 if seq == 2 else 4} 分鐘(測試壓縮;真實為 +{4 if seq == 2 else 6} 工作日)"
-                else:
-                    off = "+4 工作日" if seq == 2 else "+6 工作日"
-                followup_boxes += (
-                    f'<p style="margin:10px 0 4px"><b>跟進信 seq{seq}</b> '
-                    f'<span class="chip">{off},對方回信會自動取消</span></p>'
-                    f'<textarea name="followup{seq}" rows="8">{e(fu)}</textarea>')
-        else:
-            followup_boxes = ('<p><small class="hint">⚠ 此筆沒有預生成跟進信'
-                              '(舊資料),核准只會排 seq1;重跑 pipeline 可得三輪。'
-                              '</small></p>')
-        cards += f"""
+def _review_card(lead: Lead) -> str:
+    """單封覆核卡片(seq1 + 預生成 seq2/3)。"""
+    is_test = lead.company.startswith("🧪")
+    followup_boxes = ""
+    if lead.pending_followups:
+        for i, fu in enumerate(lead.pending_followups):
+            seq = i + 2
+            if is_test:
+                off = f"+{2 if seq == 2 else 4} 分鐘(測試壓縮;真實為 +{4 if seq == 2 else 6} 工作日)"
+            else:
+                off = "+4 工作日" if seq == 2 else "+6 工作日"
+            followup_boxes += (
+                f'<p style="margin:10px 0 4px"><b>跟進信 seq{seq}</b> '
+                f'<span class="chip">{off},對方回信會自動取消</span></p>'
+                f'<textarea name="followup{seq}" rows="8">{e(fu)}</textarea>')
+    else:
+        followup_boxes = ('<p><small class="hint">⚠ 此筆沒有預生成跟進信'
+                          '(舊資料),核准只會排 seq1;重跑 pipeline 可得三輪。'
+                          '</small></p>')
+    return f"""
 <div class="card" id="lead-{lead.id}">
   <h2 style="margin-top:0"><a href="/leads/{lead.id}">{e(lead.company)}</a>
     {grade_badge(lead)} <span class="chip">收件人:{e(lead.contact_name or '無聯絡人')}
@@ -473,10 +460,62 @@ def review(approved: int = 0, err: str = "", msg: str = ""):
     <button class="btn warn" type="submit">✘ 退回(重跑 pipeline 產新稿)</button>
   </form>
 </div>"""
-    if not cards:
-        cards = '<div class="card">佇列是空的。到 <a href="/pipeline">Pipeline</a> 頁跑新名單。</div>'
-    body = f"<h1>覆核佇列({len(pending)} 封)</h1>{cards}"
+
+
+@app.get("/review", response_class=HTMLResponse)
+def review(approved: int = 0, err: str = "", msg: str = "", pick: int = 0):
+    pending = [l for l in db.all_leads() if l.pending_draft]
+    flash = msg or ""
+    if approved:
+        lead = db.get_lead(approved)
+        if lead:
+            queued = db.list_queue(lead_id=approved)
+            plan = "、".join(f"seq{q.sequence_no} {q.scheduled_at:%m/%d %H:%M}"
+                             for q in queued if q.status == "ready")
+            flash = (f"✅ 已核准「{e(lead.company)}」整串,排入寄送佇列:{plan} "
+                     f'<a class="btn sec" href="/outbox">查看寄送佇列 →</a>')
+
+    if not pending:
+        body = ("<h1>覆核佇列(0 封)</h1><div class=\"card\">佇列是空的。"
+                "到 <a href=\"/pipeline\">Pipeline</a> 頁跑新名單。</div>")
+        return page("覆核佇列", body, active="/review", flash=flash, flash_err=err)
+
+    # 下拉選單挑一封:預設第一封;核准後自動跳下一封;pick 指定則看那封
+    pending_ids = [l.id for l in pending]
+    current_id = pick if pick in pending_ids else pending_ids[0]
+    current = next(l for l in pending if l.id == current_id)
+
+    options = "".join(
+        f'<option value="{l.id}" {"selected" if l.id == current_id else ""}>'
+        f'{i + 1}/{len(pending)} · [{l.grade or "—"}] {e(l.company)}'
+        f'{" ⚠缺email" if not l.email else ""}</option>'
+        for i, l in enumerate(pending)
+    )
+    idx = pending_ids.index(current_id)
+    prev_link = (f'<a class="btn sec" href="/review?pick={pending_ids[idx - 1]}">← 上一封</a>'
+                 if idx > 0 else '<span class="btn sec" style="opacity:.4">← 上一封</span>')
+    next_link = (f'<a class="btn sec" href="/review?pick={pending_ids[idx + 1]}">下一封 →</a>'
+                 if idx < len(pending) - 1 else '<span class="btn sec" style="opacity:.4">下一封 →</span>')
+
+    body = f"""
+<h1>覆核佇列({len(pending)} 封待審)</h1>
+<div class="card">
+  <form method="get" action="/review" class="row" style="align-items:center">
+    <label><b>挑一封覆核:</b>
+      <select name="pick" onchange="this.form.submit()" style="min-width:320px">
+        {options}
+      </select></label>
+    {prev_link}{next_link}
+  </form>
+</div>
+{_review_card(current)}"""
     return page("覆核佇列", body, active="/review", flash=flash, flash_err=err)
+
+
+def _next_pending_id(after_id: int) -> int:
+    """核准/退回一封後,自動指向下一封待覆核(讓使用者一封接一封看)。"""
+    remaining = [l.id for l in db.all_leads() if l.pending_draft and l.id != after_id]
+    return remaining[0] if remaining else 0
 
 
 @app.post("/review/{lead_id}/approve")
@@ -491,7 +530,8 @@ def review_approve(lead_id: int, draft: str = Form(...),
         except ValueError as exc:
             from urllib.parse import quote
             return RedirectResponse(f"/review?err={quote(str(exc))}", status_code=303)
-    return RedirectResponse(f"/review?approved={lead_id}", status_code=303)
+    nxt = _next_pending_id(lead_id)
+    return RedirectResponse(f"/review?approved={lead_id}&pick={nxt}", status_code=303)
 
 
 @app.post("/review/{lead_id}/reject")
@@ -499,7 +539,7 @@ def review_reject(lead_id: int):
     lead = db.get_lead(lead_id)
     if lead:
         actions.reject_draft(lead)
-    return RedirectResponse("/review", status_code=303)
+    return RedirectResponse(f"/review?pick={_next_pending_id(lead_id)}", status_code=303)
 
 
 # ─────────────────────────── 寄送佇列(L6) ───────────────────────────
